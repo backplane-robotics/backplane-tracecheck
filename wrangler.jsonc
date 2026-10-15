@@ -1,0 +1,16 @@
+{
+  // Cloudflare Workers static-assets deployment for backplanerobotics.com.
+  // Build: cd web && npm ci && npm run build   Deploy: npx wrangler deploy
+  // The site is fully static; there is no Worker script. Security headers come from web/public/_headers.
+  "$schema": "./web/node_modules/wrangler/config-schema.json",
+  "name": "backplane-tracecheck",
+  "compatibility_date": "2026-10-12",
+  "assets": {
+    "directory": "./web/dist",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "none"
+  },
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true }
+}

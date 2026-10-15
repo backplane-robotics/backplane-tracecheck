@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 
-// Production CSP from public/_headers (Cloudflare Pages), reused by `vite preview` so the
+// Production CSP from public/_headers (applied by Cloudflare), reused by `vite preview` so the
 // built site can be tested locally under exactly the policy it ships with.
 const CSP = readFileSync(resolve(import.meta.dirname, 'public/_headers'), 'utf8').match(/Content-Security-Policy: (.+)/)[1].trim();
 

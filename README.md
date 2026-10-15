@@ -117,7 +117,7 @@ cd web
 npm install
 npm test          # engine parity tests against examples/ and the Python engine
 npm run dev       # local dev server
-npm run build     # static site in web/dist (deploy to Cloudflare Pages)
+npm run build     # static site in web/dist (deployed by Cloudflare Workers, see wrangler.jsonc)
 ```
 
 ## Repository layout
