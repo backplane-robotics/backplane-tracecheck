@@ -29,6 +29,13 @@ const fmtBytes = (n) => {
   return `${n.toFixed(n >= 100 || i === 0 ? 0 : 1)} ${u[i]}`;
 };
 const fmtNum = (n) => (typeof n === 'bigint' ? n.toLocaleString('en-US') : typeof n === 'number' ? n.toLocaleString('en-US', { maximumFractionDigits: 3 }) : String(n));
+// Headline for the CRC tile: chunk coverage when known (full scan), else the data-section status.
+const crcHeadline = (cov) => {
+  if (cov.chunk_present_verified === undefined) return cov.data_section ? `data ${cov.data_section}` : '—';
+  const ok = Number(cov.chunk_present_verified), absent = Number(cov.chunk_absent ?? 0);
+  if (ok + absent === 0) return 'no chunks';
+  return absent === 0 ? `${fmtNum(ok)}/${fmtNum(ok)} chunks verified` : `${fmtNum(ok)}/${fmtNum(ok + absent)} chunks verified`;
+};
 const fmtDur = (s) => (s < 1 ? `${Math.round(s * 1000)} ms` : s < 90 ? `${s.toFixed(1)} s` : `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`);
 
 function h(tag, attrs = {}, ...children) {
@@ -328,7 +335,7 @@ function renderResults(r, seconds) {
     stat('Duration', fmtDur(seconds), seconds > 0 ? `${fmtBytes(r.source.bytes / seconds)}/s` : ''),
     stat('Messages', st.messages !== undefined ? fmtNum(st.messages) : '—', st.chunks !== undefined ? `${fmtNum(st.chunks)} chunks · ${fmtNum(st.records ?? 0)} records` : ''),
     stat('Compression', comp),
-    stat('CRC coverage', cov.data_section ? `data ${cov.data_section}` : '—', cov.chunk_present_verified !== undefined ? `${fmtNum(cov.chunk_present_verified)} chunk CRCs verified · ${fmtNum(cov.chunk_absent)} absent · summary ${cov.summary}` : cov.summary ? `summary ${cov.summary}` : ''),
+    stat('CRC coverage', crcHeadline(cov), [cov.data_section ? `data-section CRC ${cov.data_section}` : '', cov.summary ? `summary ${cov.summary}` : ''].filter(Boolean).join(' · ')),
   );
   $('result-interpretation').textContent = `${r.interpretation} "Skipped" means no conclusion was drawn.`;
 
