@@ -1,0 +1,33 @@
+# Local-only material (old reports, governance files, MVP evidence). Never committed.
+archive/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Tracecheck output
+reports/
+*.report.json
+*.report.html
+
+# Web
+node_modules/
+web/dist/
+.firebase/
+.wrangler/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tracecheck: check MCAP robot recordings in your browser | Backplane Robotics</title>
+    <meta name="description" content="Free, open-source checker for MCAP robot recordings. Validate topics, schemas, metadata, rates, gaps, timestamp regressions and sequences against a contract. Files never leave your browser; zstd, lz4 and multi-GB files supported." />
+    <link rel="canonical" href="https://backplanerobotics.com/tracecheck/" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="theme-color" content="#05080d" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Backplane Robotics" />
+    <meta property="og:title" content="Backplane Tracecheck: MCAP recording checks in your browser" />
+    <meta property="og:description" content="Contract-based checks for robot recordings. Nothing is uploaded." />
+    <meta property="og:url" content="https://backplanerobotics.com/tracecheck/" />
+    <script type="module" src="/src/app.js"></script>
+  </head>
+  <body class="app-page">
+    <a class="sr-only" href="#main">Skip to content</a>
+    <header class="site-header">
+      <nav class="nav container" aria-label="Primary">
+        <a class="brand" href="/" id="nav-home">
+          <img src="/favicon.svg" alt="" width="34" height="34" />
+          <span>Backplane Robotics<small>Tracecheck</small></span>
+        </a>
+        <button class="nav-toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false"><span></span><span></span><span></span></button>
+        <ul class="nav-links">
+          <li><a href="/tracecheck/" aria-current="page" id="nav-tracecheck">Tracecheck</a></li>
+          <li><a href="/#audits" id="nav-audits">Data audits</a></li>
+          <li><a href="/#cra" id="nav-cra">CRA readiness</a></li>
+          <li><a href="https://github.com/backplane-robotics/backplane-tracecheck" rel="noopener" id="nav-github">GitHub</a></li>
+          <li><a class="btn btn-sm" href="mailto:hello@backplanerobotics.com" id="nav-contact">Contact</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main id="main" class="container app-main">
+      <div class="app-hero">
+        <div>
+          <span class="eyebrow">Backplane Tracecheck · <span id="app-version">v0.2.0</span></span>
+          <h1>Check a robot recording <span class="grad-text">against its contract.</span></h1>
+          <p class="lead">Drop an MCAP file, choose or write a recording contract, and get evidence-backed results. Processing happens on this device. The file is never uploaded.</p>
+        </div>
+        <div class="local-badge" id="local-badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg>
+          <div><b>Local-only processing</b><span>0 bytes uploaded · no trackers</span></div>
+        </div>
+      </div>
+
+      <div class="workspace" id="workspace">
+        <!-- Step 1 -->
+        <section class="panel" id="panel-recording" aria-labelledby="h-recording">
+          <header class="panel-head"><span class="step">1</span><h2 id="h-recording">Recording</h2></header>
+          <label class="dropzone" id="dropzone" for="file-input">
+            <input type="file" id="file-input" accept=".mcap,application/octet-stream" class="sr-only" />
+            <div class="dz-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+            </div>
+            <div class="dz-text">
+              <b id="dz-title">Drop an .mcap file here</b>
+              <span id="dz-sub">or click to browse · zstd, lz4 or uncompressed · any size</span>
+            </div>
+          </label>
+          <div class="demo-head">
+            <span class="mono muted">Or try a synthetic demo recording</span>
+          </div>
+          <div class="demo-grid" id="demo-grid" role="list"></div>
+        </section>
+
+        <!-- Step 2 -->
+        <section class="panel" id="panel-contract" aria-labelledby="h-contract">
+          <header class="panel-head">
+            <span class="step">2</span><h2 id="h-contract">Contract</h2>
+            <div class="panel-tools">
+              <select id="contract-preset" aria-label="Contract preset">
+                <option value="demo-contract.json">Demo contract</option>
+                <option value="fleet-contract.json">Mobile-robot fleet contract</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+          </header>
+          <div class="editor-wrap">
+            <textarea id="contract-editor" spellcheck="false" autocomplete="off" aria-label="Contract JSON"></textarea>
+          </div>
+          <div class="contract-bar">
+            <span class="contract-status" id="contract-status" role="status">Loading…</span>
+            <div class="contract-actions">
+              <input type="file" id="contract-file" accept=".json,application/json" class="sr-only" />
+              <button class="btn btn-sm" id="contract-load" type="button">Load file</button>
+              <button class="btn btn-sm" id="contract-download" type="button">Download</button>
+            </div>
+          </div>
+          <details class="help" id="contract-help">
+            <summary>Contract keys</summary>
+            <p class="muted">Top level: <code>version</code> (1), <code>name</code>, <code>profile</code>, <code>missing_crc</code> (<code>"warn"</code> or <code>"ignore"</code>), <code>metadata</code>, <code>topics</code>. Per topic: <code>required</code>, <code>message_encoding</code>, <code>schema_name</code>, <code>schema_encoding</code>, <code>schema_sha256</code>, <code>min_count</code>, <code>max_count</code>, <code>time_basis</code>, <code>clock_confirmed</code>, <code>min_rate_hz</code>, <code>max_rate_hz</code>, <code>max_gap_ns</code>, <code>check_regression</code>, <code>sequence</code>, <code>interval_ns</code>, <code>boundary_tolerance_ns</code>. Timing checks run only when <code>clock_confirmed</code> is true.</p>
+          </details>
+        </section>
+
+        <!-- Step 3 -->
+        <section class="panel run-panel" id="panel-run" aria-labelledby="h-run">
+          <header class="panel-head"><span class="step">3</span><h2 id="h-run">Run</h2></header>
+          <div class="options">
+            <label class="toggle" for="opt-fast">
+              <input type="checkbox" id="opt-fast" />
+              <span class="switch" aria-hidden="true"></span>
+              <span><b>Fast mode</b><small>Read only the summary: instant inventory, counts and metadata. Timing checks are skipped.</small></span>
+            </label>
+            <label class="toggle" for="opt-ignore-crc">
+              <input type="checkbox" id="opt-ignore-crc" />
+              <span class="switch" aria-hidden="true"></span>
+              <span><b>Ignore missing CRCs</b><small>Don't warn when the writer stored no checksums. Corrupt CRCs still fail.</small></span>
+            </label>
+          </div>
+          <div class="run-row">
+            <div class="selected" id="selected-file"><span class="muted">No recording selected</span></div>
+            <button class="btn btn-primary btn-run" id="run-btn" type="button" disabled>Run checks <span class="arrow">→</span></button>
+          </div>
+          <div class="progress" id="progress" hidden>
+            <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
+            <div class="progress-meta mono">
+              <span id="progress-pct">0%</span>
+              <span id="progress-bytes">0 B</span>
+              <span id="progress-rate">—</span>
+              <span id="progress-eta"></span>
+              <button class="btn btn-sm" id="cancel-btn" type="button">Cancel</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Results -->
+      <section class="results" id="results" hidden aria-labelledby="h-results">
+        <div class="results-head card">
+          <div class="overall" id="overall">
+            <div class="overall-ring" id="overall-ring"><span id="overall-label">—</span></div>
+            <div>
+              <h2 id="h-results">Results</h2>
+              <p class="mono muted file-line" id="result-file"></p>
+              <div class="counts" id="result-counts"></div>
+            </div>
+          </div>
+          <div class="result-actions">
+            <button class="btn btn-sm" id="dl-json" type="button">Download JSON</button>
+            <button class="btn btn-sm" id="dl-html" type="button">Download HTML report</button>
+            <button class="btn btn-sm" id="new-check" type="button">New check</button>
+          </div>
+        </div>
+
+        <div class="stats" id="result-stats"></div>
+        <p class="interpretation muted" id="result-interpretation"></p>
+
+        <div class="checks" id="result-checks"></div>
+
+        <div class="card inventory">
+          <h3>Channel inventory</h3>
+          <div class="table-wrap"><table id="inventory-table"><thead><tr><th>ID</th><th>Topic</th><th>Messages</th><th>Encoding</th><th>Schema</th></tr></thead><tbody></tbody></table></div>
+        </div>
+
+        <div class="upsell card">
+          <div>
+            <h3>Checking data you bought?</h3>
+            <p class="muted">Backplane runs independent <b>Data Acceptance Audits</b>: your contract, every vendor batch, with evidence for each rejected episode.</p>
+          </div>
+          <a class="btn btn-primary" href="/#audits" id="upsell-audits">Learn about audits <span class="arrow">→</span></a>
+        </div>
+      </section>
+
+      <div class="error-box" id="error-box" role="alert" hidden></div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-base app-footer">
+        <span>© <span id="year">2026</span> Backplane Robotics LLC</span>
+        <span>Tracecheck is open source (Apache-2.0). Results are contract observations, not safety or compliance certification.</span>
+      </div>
+    </footer>
+  </body>
+</html>

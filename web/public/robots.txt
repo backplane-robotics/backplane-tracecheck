@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://backplanerobotics.com/sitemap.xml

@@ -1,0 +1,372 @@
+// Tracecheck web app: UI wiring. All scanning happens in ./engine/worker.js on this device.
+import './style.css';
+import './app.css';
+import { initChrome, toast } from './chrome.js';
+import { ContractError, loads } from './engine/contract.js';
+import { VERSION } from './engine/engine.js';
+import { PyFloat, parse } from './engine/json.js';
+
+initChrome();
+
+const $ = (id) => document.getElementById(id);
+const ui = {
+  dropzone: $('dropzone'), fileInput: $('file-input'), dzTitle: $('dz-title'), dzSub: $('dz-sub'), demoGrid: $('demo-grid'),
+  preset: $('contract-preset'), editor: $('contract-editor'), status: $('contract-status'), contractFile: $('contract-file'),
+  fast: $('opt-fast'), ignoreCrc: $('opt-ignore-crc'), selected: $('selected-file'), run: $('run-btn'),
+  progress: $('progress'), bar: $('progress-bar'), pct: $('progress-pct'), bytes: $('progress-bytes'), rate: $('progress-rate'), eta: $('progress-eta'),
+  results: $('results'), error: $('error-box'),
+};
+$('app-version').textContent = `v${VERSION}`;
+
+const state = { file: null, demo: null, contractOk: false, worker: null, report: null, json: '', html: '', running: false };
+
+// ---------- formatting helpers ----------
+const fmtBytes = (n) => {
+  n = Number(n);
+  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  while (n >= 1000 && i < u.length - 1) (n /= 1000), i++;
+  return `${n.toFixed(n >= 100 || i === 0 ? 0 : 1)} ${u[i]}`;
+};
+const fmtNum = (n) => (typeof n === 'bigint' ? n.toLocaleString('en-US') : typeof n === 'number' ? n.toLocaleString('en-US', { maximumFractionDigits: 3 }) : String(n));
+const fmtDur = (s) => (s < 1 ? `${Math.round(s * 1000)} ms` : s < 90 ? `${s.toFixed(1)} s` : `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`);
+
+function h(tag, attrs = {}, ...children) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === 'class') n.className = v;
+    else if (k === 'text') n.textContent = v;
+    else n.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of children.flat()) if (c !== null && c !== undefined && c !== false) n.append(c instanceof Node ? c : String(c));
+  return n;
+}
+
+/** Python-faithful JSON (Maps, BigInt, PyFloat) -> plain objects. Integers that fit exactly in a double
+ *  become Numbers; larger ones (nanosecond timestamps) stay BigInt so no digits are lost. */
+function plain(v) {
+  if (v instanceof Map) return Object.fromEntries([...v].map(([k, x]) => [k, plain(x)]));
+  if (Array.isArray(v)) return v.map(plain);
+  if (v instanceof PyFloat) return v.v;
+  if (typeof v === 'bigint') return v <= BigInt(Number.MAX_SAFE_INTEGER) && v >= -BigInt(Number.MAX_SAFE_INTEGER) ? Number(v) : v;
+  return v;
+}
+
+function download(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = h('a', { href: url, download: name });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+// ---------- contract editor ----------
+const CUSTOM_PLACEHOLDER = `Paste your contract JSON here, or click "Load file".
+
+Minimal example:
+{
+  "version": 1,
+  "name": "My recording requirements",
+  "topics": {
+    "/my/topic": { "required": true, "min_count": 1 }
+  }
+}`;
+ui.editor.placeholder = CUSTOM_PLACEHOLDER;
+
+async function loadPreset(name) {
+  if (name === 'custom') {
+    ui.editor.value = '';
+    validateContract();
+    ui.editor.focus();
+    return;
+  }
+  const res = await fetch(`/demo/${name}`);
+  ui.editor.value = await res.text();
+  validateContract();
+}
+
+let validateTimer;
+function validateContract() {
+  if (!ui.editor.value.trim()) {
+    ui.status.textContent = 'Paste a contract or load a .json file to continue';
+    ui.status.className = 'contract-status';
+    state.contractOk = false;
+    updateRun();
+    return;
+  }
+  try {
+    const c = loads(ui.editor.value);
+    const topics = c.get('topics').size;
+    ui.status.textContent = `✓ Valid · ${c.get('name')} · ${topics} topic${topics === 1 ? '' : 's'}`;
+    ui.status.className = 'contract-status ok';
+    state.contractOk = true;
+  } catch (e) {
+    ui.status.textContent = `✗ ${e instanceof ContractError ? e.message : 'Invalid JSON'}`;
+    ui.status.className = 'contract-status bad';
+    state.contractOk = false;
+  }
+  updateRun();
+}
+ui.editor.addEventListener('input', () => {
+  ui.preset.value = 'custom';
+  clearTimeout(validateTimer);
+  validateTimer = setTimeout(validateContract, 250);
+});
+ui.editor.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab' && !e.shiftKey) {
+    e.preventDefault();
+    const { selectionStart: s, selectionEnd: t, value } = ui.editor;
+    ui.editor.value = value.slice(0, s) + '  ' + value.slice(t);
+    ui.editor.selectionStart = ui.editor.selectionEnd = s + 2;
+    ui.editor.dispatchEvent(new Event('input'));
+  }
+});
+ui.preset.addEventListener('change', () => loadPreset(ui.preset.value));
+$('contract-load').addEventListener('click', () => ui.contractFile.click());
+ui.contractFile.addEventListener('change', async () => {
+  const f = ui.contractFile.files[0];
+  if (!f) return;
+  if (f.size > 64 * 1024) return toast('Contract files are limited to 64 KiB');
+  ui.editor.value = await f.text();
+  ui.preset.value = 'custom';
+  validateContract();
+  ui.contractFile.value = '';
+});
+$('contract-download').addEventListener('click', () => download('contract.json', ui.editor.value, 'application/json'));
+
+// ---------- recording selection ----------
+function setFile(file, demo = null) {
+  state.file = file;
+  state.demo = demo;
+  ui.selected.replaceChildren(
+    h('span', { class: 'sel-name', text: file.name }),
+    h('span', { class: 'mono muted', text: `${fmtBytes(file.size)}${demo ? ' · demo' : ''}` }),
+  );
+  ui.dropzone.classList.add('has-file');
+  ui.dzTitle.textContent = file.name;
+  ui.dzSub.textContent = `${fmtBytes(file.size)} · click or drop to replace`;
+  document.querySelectorAll('.demo').forEach((d) => d.classList.toggle('active', d.dataset.file === demo?.file));
+  updateRun();
+}
+
+ui.fileInput.addEventListener('change', () => ui.fileInput.files[0] && setFile(ui.fileInput.files[0]));
+for (const ev of ['dragenter', 'dragover']) {
+  ui.dropzone.addEventListener(ev, (e) => {
+    e.preventDefault();
+    ui.dropzone.classList.add('drag');
+  });
+}
+for (const ev of ['dragleave', 'drop']) ui.dropzone.addEventListener(ev, () => ui.dropzone.classList.remove('drag'));
+ui.dropzone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  const f = e.dataTransfer?.files?.[0];
+  if (f) setFile(f);
+});
+// Prevent the browser from navigating to a file dropped outside the zone.
+window.addEventListener('dragover', (e) => e.preventDefault());
+window.addEventListener('drop', (e) => e.preventDefault());
+
+async function loadDemos() {
+  try {
+    const demos = await (await fetch('/demo/manifest.json')).json();
+    ui.demoGrid.replaceChildren(
+      ...demos.map((d, i) => {
+        const b = h('button', { class: 'demo', type: 'button', role: 'listitem', id: `demo-${d.file.replace(/\W+/g, '-')}`, 'data-file': d.file },
+          h('b', { text: d.title }), h('span', { text: d.note }), h('small', { class: 'mono', text: `${d.file} · ${fmtBytes(d.bytes)}` }));
+        b.style.setProperty('--i', i);
+        b.addEventListener('click', async () => {
+          b.classList.add('loading');
+          try {
+            const blob = await (await fetch(`/demo/${d.file}`)).blob();
+            setFile(new File([blob], d.file), d);
+            if (ui.preset.value !== d.contract) {
+              ui.preset.value = d.contract;
+              await loadPreset(d.contract);
+            }
+          } finally {
+            b.classList.remove('loading');
+          }
+        });
+        return b;
+      }),
+    );
+  } catch {
+    ui.demoGrid.replaceChildren(h('p', { class: 'muted', text: 'Demo files are unavailable offline.' }));
+  }
+}
+
+function updateRun() {
+  ui.run.disabled = !(state.file && state.contractOk) || state.running;
+}
+
+// ---------- running ----------
+function newWorker() {
+  state.worker?.terminate();
+  state.worker = new Worker(new URL('./engine/worker.js', import.meta.url), { type: 'module' });
+  state.worker.onmessage = onWorkerMessage;
+  state.worker.onerror = (e) => fail(`Worker error: ${e.message || 'unknown'}`);
+}
+
+let runStarted = 0;
+function run() {
+  if (ui.run.disabled) return;
+  ui.error.hidden = true;
+  ui.results.hidden = true;
+  state.running = true;
+  updateRun();
+  ui.run.classList.add('busy');
+  ui.progress.hidden = false;
+  setProgress(0, state.file.size, 0);
+  newWorker();
+  runStarted = performance.now();
+  state.worker.postMessage({ file: state.file, filename: state.file.name, contractText: ui.editor.value, fast: ui.fast.checked, ignoreCrc: ui.ignoreCrc.checked });
+}
+
+function setProgress(done, total, seconds) {
+  const p = total ? Math.min(1, done / total) : 1;
+  ui.bar.style.width = `${(p * 100).toFixed(1)}%`;
+  ui.pct.textContent = `${Math.floor(p * 100)}%`;
+  ui.bytes.textContent = `${fmtBytes(done)} / ${fmtBytes(total)}`;
+  const rate = seconds > 0.2 ? done / seconds : 0;
+  ui.rate.textContent = rate ? `${fmtBytes(rate)}/s` : '—';
+  ui.eta.textContent = rate && p < 1 ? `~${fmtDur((total - done) / rate)} left` : '';
+}
+
+function stopRunning() {
+  state.running = false;
+  ui.run.classList.remove('busy');
+  ui.progress.hidden = true;
+  updateRun();
+}
+
+function fail(message) {
+  stopRunning();
+  ui.error.textContent = message;
+  ui.error.hidden = false;
+}
+
+function onWorkerMessage({ data }) {
+  if (data.type === 'progress') setProgress(data.done, data.total, data.seconds);
+  else if (data.type === 'error') fail(data.kind === 'contract' ? `Contract error: ${data.message}` : `Unexpected error: ${data.message}`);
+  else if (data.type === 'result') {
+    setProgress(state.file.size, state.file.size, data.seconds);
+    state.json = data.json;
+    state.html = data.html;
+    state.report = plain(parse(data.json));
+    stopRunning();
+    state.worker.terminate();
+    state.worker = null;
+    renderResults(state.report, (performance.now() - runStarted) / 1000);
+  }
+}
+
+ui.run.addEventListener('click', run);
+$('cancel-btn').addEventListener('click', () => {
+  state.worker?.terminate();
+  state.worker = null;
+  stopRunning();
+  toast('Scan cancelled');
+});
+
+// ---------- results ----------
+const STATUS_TEXT = { pass: 'Pass', warn: 'Warn', fail: 'Fail', skipped: 'Skipped' };
+const pill = (s) => h('span', { class: `pill ${s}`, text: s });
+const FACT_KEYS = ['topic', 'channel_id', 'observed', 'expected', 'observed_hz', 'minimum', 'maximum', 'time_basis', 'expected_interval_ns',
+  'boundary_tolerance_ns', 'missing_crc_policy', 'crc_coverage_complete', 'unknown_records_skipped'];
+
+const fmtNs = (ns) => {
+  const n = Number(ns);
+  return n >= 1e9 ? `${(n / 1e9).toFixed(3)} s` : n >= 1e6 ? `${(n / 1e6).toFixed(1)} ms` : n >= 1e3 ? `${(n / 1e3).toFixed(1)} µs` : `${n} ns`;
+};
+const kvs = (obj, prefix = '') =>
+  Object.entries(obj).flatMap(([k, v]) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? kvs(v, `${prefix}${k}.`)
+      : [h('span', { class: 'kv' }, h('i', { text: prefix + k }), h('b', { text: Array.isArray(v) ? `[${v.map(String).join(', ')}]` : v === null ? 'null' : String(v) }))]);
+
+function evidenceLine(ev) {
+  if (ev.previous && ev.current) {
+    const rest = Object.fromEntries(Object.entries(ev).filter(([k]) => k !== 'previous' && k !== 'current'));
+    return h('li', { class: 'ev pair' },
+      h('div', { class: 'ev-row' }, h('span', { class: 'ev-tag', text: 'previous' }), kvs(ev.previous)),
+      h('div', { class: 'ev-row' }, h('span', { class: 'ev-tag', text: 'current' }), kvs(ev.current)),
+      Object.keys(rest).length ? h('div', { class: 'ev-row' }, h('span', { class: 'ev-tag hot', text: 'gap_ns' in rest ? `gap ${fmtNs(rest.gap_ns)}` : 'detail' }), kvs(rest)) : null);
+  }
+  return h('li', { class: 'ev' }, kvs(ev));
+}
+
+function findingEl(f) {
+  const facts = FACT_KEYS.filter((k) => k in f).map((k) =>
+    h('span', { class: 'fact' }, h('i', { text: k.replace(/_/g, ' ') }), h('b', { text: Array.isArray(f[k]) ? `[${f[k].map(fmtNum).join(', ')}]` : f[k] === null ? 'null' : fmtNum(f[k]) })));
+  const el = h('div', { class: `finding ${f.status}` }, h('div', { class: 'finding-head' }, pill(f.status), h('p', { text: f.detail })));
+  if (facts.length) el.append(h('div', { class: 'facts' }, facts));
+  if (Array.isArray(f.evidence) && f.evidence.length) {
+    el.append(h('div', { class: 'ev-head mono' }, `Evidence · ${fmtNum(f.evidence_count)} total${f.evidence_omitted ? ` · ${fmtNum(f.evidence_omitted)} not shown` : ''}`));
+    el.append(h('ul', { class: 'ev-list' }, f.evidence.map(evidenceLine)));
+  }
+  return el;
+}
+
+function renderResults(r, seconds) {
+  const sc = r.status_counts;
+  const ring = $('overall-ring');
+  ring.className = `overall-ring ${r.overall}`;
+  $('overall-label').textContent = STATUS_TEXT[r.overall];
+  $('h-results').textContent = r.scan_complete ? `Contract review: ${STATUS_TEXT[r.overall].toLowerCase()}` : 'Scan incomplete';
+  $('result-file').textContent = `${r.source.name} · ${fmtBytes(r.source.bytes)}${r.source.sha256 ? ` · sha256 ${r.source.sha256.slice(0, 16)}…` : ''}`;
+  $('result-file').title = r.source.sha256 || '';
+  $('result-counts').replaceChildren(...['pass', 'warn', 'fail', 'skipped'].map((s) => h('span', { class: `count ${s}` }, h('b', { text: sc[s] }), ` ${s}`)));
+
+  const cov = r.checksum_coverage || {};
+  const comp = r.compression ? Object.entries(r.compression).map(([k, v]) => `${k || 'none'} × ${v}`).join(', ') || '—' : '—';
+  const st = r.scan_stats || {};
+  const stat = (label, value, sub = '') => h('div', { class: 'stat card' }, h('span', { class: 'mono muted', text: label }), h('b', { text: value }), sub ? h('small', { class: 'muted', text: sub }) : null);
+  $('result-stats').replaceChildren(
+    stat('Mode', r.scan_mode === 'fast' ? 'Fast (summary)' : 'Full scan', r.fast_mode_fallback ? `fell back: ${r.fast_mode_fallback}` : r.mcap_profile ? `profile: ${r.mcap_profile}` : ''),
+    stat('Duration', fmtDur(seconds), seconds > 0 ? `${fmtBytes(r.source.bytes / seconds)}/s` : ''),
+    stat('Messages', st.messages !== undefined ? fmtNum(st.messages) : '—', st.chunks !== undefined ? `${fmtNum(st.chunks)} chunks · ${fmtNum(st.records ?? 0)} records` : ''),
+    stat('Compression', comp),
+    stat('CRC coverage', cov.data_section ? `data ${cov.data_section}` : '—', cov.chunk_present_verified !== undefined ? `${fmtNum(cov.chunk_present_verified)} chunk CRCs verified · ${fmtNum(cov.chunk_absent)} absent · summary ${cov.summary}` : cov.summary ? `summary ${cov.summary}` : ''),
+  );
+  $('result-interpretation').textContent = `${r.interpretation} "Skipped" means no conclusion was drawn.`;
+
+  $('result-checks').replaceChildren(
+    ...r.checks.map((c, i) => {
+      const counted = c.findings.filter((f) => f.status !== 'skipped').length;
+      const d = h('details', { class: `check ${c.status}`, id: `check-${c.id}`, open: c.status === 'fail' || c.status === 'warn' ? true : null },
+        h('summary', {}, h('code', { text: c.id }), h('span', { class: 'check-name', text: c.name }),
+          h('span', { class: 'check-n mono muted', text: `${counted} finding${counted === 1 ? '' : 's'}` }), pill(c.status)),
+        h('div', { class: 'check-body' }, c.findings.map(findingEl)));
+      d.style.setProperty('--i', i);
+      return d;
+    }),
+  );
+
+  const tbody = document.querySelector('#inventory-table tbody');
+  const inv = r.inventory || [];
+  tbody.replaceChildren(
+    ...(inv.length
+      ? inv.map((x) => h('tr', {}, h('td', { class: 'mono', text: x.channel_id }), h('td', { class: 'mono', text: x.topic }), h('td', { class: 'mono', text: fmtNum(x.message_count) }),
+          h('td', { text: x.message_encoding }), h('td', { class: 'mono', text: x.schema ? `${x.schema.name} (${x.schema.encoding})` : '—' })))
+      : [h('tr', {}, h('td', { colspan: 5, class: 'muted', text: 'No channels read.' }))]),
+  );
+
+  ui.results.hidden = false;
+  ui.results.classList.remove('in');
+  requestAnimationFrame(() => ui.results.classList.add('in'));
+  ui.results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+const baseName = () => (state.report?.source.name || 'recording').replace(/\.mcap$/i, '');
+$('dl-json').addEventListener('click', () => download(`${baseName()}.tracecheck.json`, state.json + '\n', 'application/json'));
+$('dl-html').addEventListener('click', () => download(`${baseName()}.tracecheck.html`, state.html, 'text/html'));
+$('new-check').addEventListener('click', () => {
+  ui.results.hidden = true;
+  $('workspace').scrollIntoView({ behavior: 'smooth' });
+});
+
+// ---------- init ----------
+loadDemos();
+loadPreset(ui.preset.value);

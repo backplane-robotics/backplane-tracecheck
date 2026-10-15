@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "name": "Synthetic mobile-robot demo",
+  "missing_crc": "warn",
+  "metadata": {
+    "session": {
+      "robot_id": null,
+      "software_version": null
+    }
+  },
+  "topics": {
+    "/imu": {
+      "message_encoding": "cdr",
+      "schema_name": "sensor_msgs/msg/Imu",
+      "clock_confirmed": true,
+      "min_rate_hz": 190,
+      "max_rate_hz": 210,
+      "max_gap_ns": 20000000,
+      "check_regression": true
+    },
+    "/odom": {
+      "message_encoding": "cdr",
+      "schema_name": "nav_msgs/msg/Odometry",
+      "clock_confirmed": true,
+      "min_rate_hz": 45,
+      "max_rate_hz": 55,
+      "max_gap_ns": 50000000,
+      "check_regression": true
+    },
+    "/scan": {
+      "message_encoding": "cdr",
+      "schema_name": "sensor_msgs/msg/LaserScan",
+      "clock_confirmed": true,
+      "min_rate_hz": 9,
+      "max_rate_hz": 11,
+      "max_gap_ns": 200000000
+    },
+    "/camera/image/compressed": {
+      "message_encoding": "cdr",
+      "schema_name": "sensor_msgs/msg/CompressedImage",
+      "clock_confirmed": true,
+      "min_rate_hz": 14,
+      "max_rate_hz": 16,
+      "max_gap_ns": 150000000
+    }
+  }
+}

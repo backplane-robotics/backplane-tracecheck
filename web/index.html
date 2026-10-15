@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Backplane Robotics: Data acceptance audits, Tracecheck and CRA readiness for robot makers</title>
+    <meta name="description" content="Backplane Robotics builds the quiet infrastructure behind reliable robots: free open-source Tracecheck for MCAP recordings, independent Data Acceptance Audits for robot training data, and EU Cyber Resilience Act readiness for ROS-based products." />
+    <link rel="canonical" href="https://backplanerobotics.com/" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="theme-color" content="#05080d" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Backplane Robotics" />
+    <meta property="og:title" content="Backplane Robotics: the quiet layer behind reliable robots" />
+    <meta property="og:description" content="Open tools and independent audits for robot recordings, training data and software supply chains." />
+    <meta property="og:url" content="https://backplanerobotics.com/" />
+    <meta name="twitter:card" content="summary" />
+    <script type="module" src="/src/main.js"></script>
+  </head>
+  <body>
+    <a class="sr-only" href="#main">Skip to content</a>
+    <header class="site-header">
+      <nav class="nav container" aria-label="Primary">
+        <a class="brand" href="/" id="nav-home">
+          <img src="/favicon.svg" alt="" width="34" height="34" />
+          <span>Backplane Robotics<small>Robot data infrastructure</small></span>
+        </a>
+        <button class="nav-toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false"><span></span><span></span><span></span></button>
+        <ul class="nav-links">
+          <li><a href="#tracecheck" id="nav-tracecheck">Tracecheck</a></li>
+          <li><a href="#audits" id="nav-audits">Data audits</a></li>
+          <li><a href="#cra" id="nav-cra">CRA readiness</a></li>
+          <li><a href="#privacy" id="nav-privacy">Privacy</a></li>
+          <li><a class="btn btn-sm btn-primary" href="/tracecheck/" id="nav-open-app">Open Tracecheck <span class="arrow">→</span></a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main id="main">
+      <!-- Hero -->
+      <section class="hero">
+        <div class="container hero-grid">
+          <div class="hero-copy">
+            <span class="eyebrow reveal">Robotics infrastructure · USA · EU</span>
+            <h1 class="reveal" data-d="1">The quiet layer behind <span class="grad-text">reliable robots.</span></h1>
+            <p class="lead reveal">
+              Open tools and independent audits for robot recordings, training data and software supply chains.
+              We handle the behind-the-scenes checks, so your team can keep building robots.
+            </p>
+            <div class="hero-cta reveal">
+              <a class="btn btn-primary" href="/tracecheck/" id="hero-try">Check a recording, free <span class="arrow">→</span></a>
+              <a class="btn" href="#services" id="hero-services">See services</a>
+            </div>
+            <ul class="hero-proof reveal" aria-label="Highlights">
+              <li><b>0 bytes</b> uploaded</li>
+              <li><b>10</b> contract checks</li>
+              <li><b>zstd · lz4</b> chunks</li>
+              <li><b>Multi-GB</b> streaming</li>
+            </ul>
+          </div>
+
+          <div class="hero-visual reveal" aria-hidden="true">
+            <div class="term">
+              <div class="term-bar"><i></i><i></i><i></i><span>tracecheck · fleet-dropout-lz4.mcap</span></div>
+              <div class="term-body">
+                <div class="term-line l1"><span class="p">$</span> tracecheck check run_0412.mcap --contract buyer.json</div>
+                <div class="term-line l2 c">scanning 2.41 GB · lz4 · 4,812 chunks · CRC verified</div>
+                <div class="term-progress"><span></span></div>
+                <ul class="term-checks">
+                  <li class="tc"><code>C01</code> Readable bounded MCAP scan <b class="ok">PASS</b></li>
+                  <li class="tc"><code>C02</code> Required topics contain messages <b class="ok">PASS</b></li>
+                  <li class="tc"><code>C03</code> Profile, schema and encoding <b class="ok">PASS</b></li>
+                  <li class="tc"><code>C04</code> Required file metadata <b class="ok">PASS</b></li>
+                  <li class="tc"><code>C06</code> Average recorded rate <b class="ok">PASS</b></li>
+                  <li class="tc"><code>C07</code> Sorted timestamp gaps <b class="bad">FAIL</b></li>
+                  <li class="tc"><code>C08</code> Timestamp regressions <b class="ok">PASS</b></li>
+                </ul>
+                <div class="term-finding">
+                  <span class="pill fail">fail</span>
+                  <span>/imu gap of <b>412 ms</b> at chunk 0x5A1F2, message #1,894 (limit 20 ms)</span>
+                </div>
+              </div>
+            </div>
+            <div class="orb orb-a"></div>
+            <div class="orb orb-b"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Logos / trust strip -->
+      <div class="strip">
+        <div class="container strip-inner">
+          <span>Built for</span>
+          <ul>
+            <li>ROS 2 &amp; MCAP</li>
+            <li>Robot-learning data buyers</li>
+            <li>AMR &amp; manipulator makers</li>
+            <li>Teams selling into the EU</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Tracecheck -->
+      <section id="tracecheck">
+        <div class="container">
+          <div class="section-head reveal">
+            <span class="eyebrow">Free &amp; open source · Apache-2.0</span>
+            <h2>Backplane <span class="grad-text">Tracecheck</span></h2>
+            <p class="lead">
+              Check MCAP robot recordings against a written <em>recording contract</em>: required topics, schemas,
+              metadata, rates, gaps, timestamp regressions, sequence breaks and time coverage. Every finding points to
+              the exact byte offset as evidence.
+            </p>
+          </div>
+
+          <div class="feature-grid">
+            <article class="card glow hover reveal">
+              <div class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg></div>
+              <h3>Files stay on your machine</h3>
+              <p class="muted">The web app reads your file in slices inside a browser worker. Nothing is uploaded, and the site's security policy blocks outside connections.</p>
+            </article>
+            <article class="card glow hover reveal" data-d="1">
+              <div class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h10M4 17h6"/><path d="M17 14l3 3-3 3"/></svg></div>
+              <h3>Multi-GB, streamed</h3>
+              <p class="muted">Recordings are streamed with SHA-256 and CRC checks computed on the fly. No file-size cap. Memory use is bounded by explicit limits.</p>
+            </article>
+            <article class="card glow hover reveal">
+              <div class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9z"/></svg></div>
+              <h3>zstd &amp; lz4, bomb-safe</h3>
+              <p class="muted">Compressed chunks are decoded with output strictly capped at the declared size. Malicious "decompression bombs" are rejected, not expanded.</p>
+            </article>
+            <article class="card glow hover reveal" data-d="1">
+              <div class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div>
+              <h3>Fast mode</h3>
+              <p class="muted">Reads only the file summary for an instant inventory, message counts, schemas and metadata check. It falls back to a full scan if the summary is missing.</p>
+            </article>
+            <article class="card glow hover reveal">
+              <div class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><path d="M14 4h6v6M20 4l-9 9"/></svg></div>
+              <h3>Evidence, not opinions</h3>
+              <p class="muted">JSON and HTML reports pin each finding to chunk and message offsets, and include a contract hash and file hash, ready for a vendor dispute or an audit trail.</p>
+            </article>
+            <article class="card glow hover reveal" data-d="1">
+              <div class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg></div>
+              <h3>CLI for pipelines</h3>
+              <p class="muted">The same checks run as a Python CLI with CI-friendly exit codes. Browser and CLI produce identical JSON reports for the same inputs.</p>
+            </article>
+          </div>
+
+          <div class="install reveal">
+            <div>
+              <h3>Run it in CI</h3>
+              <p class="muted">Python 3.11+. Exit code 0 means pass, 1 means findings, 2 means an input or configuration error.</p>
+              <a class="btn" href="https://github.com/backplane-robotics/backplane-tracecheck" id="tracecheck-github" rel="noopener">View on GitHub <span class="arrow">→</span></a>
+            </div>
+            <div class="code" id="install-code" data-text="pip install backplane-tracecheck
+tracecheck check recording.mcap --contract contract.json --out report/">
+              <button class="btn btn-sm copy-btn" data-copy="install-code" id="copy-install">Copy</button>
+              <div><span class="p">$ </span>pip install backplane-tracecheck</div>
+              <div><span class="p">$ </span>tracecheck check recording.mcap \</div>
+              <div>    --contract <span class="s">contract.json</span> --out <span class="s">report/</span></div>
+              <div class="c"># --fast · --ignore-missing-crc · --fail-on fail · --timeout 600</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="divider" />
+
+      <!-- Services -->
+      <section id="services">
+        <div class="container">
+          <div class="section-head center reveal">
+            <span class="eyebrow">Services</span>
+            <h2>Free tools in front. <span class="grad-text">Expert work</span> behind them.</h2>
+            <p class="lead">Every paid service starts from an open tool you can inspect and run yourself. You pay for neutrality, judgment and deadlines met, not for lock-in.</p>
+          </div>
+
+          <!-- A: Data Acceptance Audits -->
+          <div class="service reveal" id="audits">
+            <div class="service-copy">
+              <span class="pill paid">Paid · per batch</span>
+              <h3 class="service-title">Data Acceptance Audits</h3>
+              <p class="lead">
+                Buying robot training data? We audit each vendor delivery against <em>your</em> acceptance contract,
+                independently, and report which demonstrations you should pay for.
+              </p>
+              <ul class="ticks">
+                <li>You write the rules: topics, rates, sync tolerances, metadata, zero-drop limits</li>
+                <li><b>Acceptance yield</b> per batch: accepted vs rejected episodes, with reasons</li>
+                <li>Byte-level evidence for every rejection, so vendor disputes are quick</li>
+                <li>Neutral third party: we don't sell data and we don't build competing models</li>
+                <li>Pilot batches of 10–25 demonstrations to calibrate contracts before scale-up</li>
+              </ul>
+              <a class="btn btn-primary" href="mailto:hello@backplanerobotics.com?subject=Data%20Acceptance%20Audit" id="audits-cta">Scope an audit <span class="arrow">→</span></a>
+            </div>
+            <div class="service-visual card">
+              <div class="yield-head">
+                <span class="mono muted">batch_07 · vendor delivery</span>
+                <span class="pill warn">review</span>
+              </div>
+              <div class="yield-ring">
+                <svg viewBox="0 0 120 120" aria-hidden="true">
+                  <circle cx="60" cy="60" r="50" class="ring-bg" />
+                  <circle cx="60" cy="60" r="50" class="ring-fg" pathLength="100" />
+                </svg>
+                <div class="yield-value"><b id="yield-number">87</b><span>% accepted</span></div>
+              </div>
+              <ul class="yield-rows">
+                <li><span>Episodes delivered</span><b class="mono">240</b></li>
+                <li><span>Accepted</span><b class="mono ok">209</b></li>
+                <li><span>Camera ↔ joint sync &gt; 5 ms</span><b class="mono bad">18</b></li>
+                <li><span>Dropped frames</span><b class="mono bad">9</b></li>
+                <li><span>Missing operator metadata</span><b class="mono warnc">4</b></li>
+              </ul>
+              <p class="tiny muted">Illustrative example.</p>
+            </div>
+          </div>
+
+          <!-- B: CRA -->
+          <div class="service reverse reveal" id="cra">
+            <div class="service-copy">
+              <span class="pill free">Free tool</span> <span class="pill soon">Coming soon</span> <span class="pill paid">Paid service</span>
+              <h3 class="service-title">EU Cyber Resilience Act readiness for ROS products</h3>
+              <p class="lead">
+                From <b>11&nbsp;December&nbsp;2027</b>, connected products sold in the EU need a software bill of materials
+                (SBOM) and documented vulnerability handling. Generic SBOM tools don't understand ROS workspaces. Ours will.
+              </p>
+              <div class="tiers">
+                <div class="tier">
+                  <h4>ROS-aware SBOM generator</h4>
+                  <p class="muted">Open source. Reads <code>package.xml</code>, resolves <code>rosdep</code> keys to apt/pip packages, and outputs CycloneDX.</p>
+                  <span class="pill free">Free</span>
+                </div>
+                <div class="tier">
+                  <h4>CRA Readiness Sprint</h4>
+                  <p class="muted">A fixed-fee engagement: SBOM, vulnerability baseline, and a vulnerability-handling and 24 h/72 h reporting playbook.</p>
+                  <span class="pill paid">Fixed fee</span>
+                </div>
+                <div class="tier">
+                  <h4>Vulnerability Watch</h4>
+                  <p class="muted">Monthly monitoring of your SBOM: new CVEs triaged, VEX "not affected" statements, and a reporting log.</p>
+                  <span class="pill paid">Monthly</span>
+                </div>
+              </div>
+              <a class="btn btn-primary" href="mailto:hello@backplanerobotics.com?subject=CRA%20Readiness" id="cra-cta">Book a readiness call <span class="arrow">→</span></a>
+              <p class="tiny muted disclaimer">We prepare evidence and processes. We don't issue legal opinions or certify CRA compliance.</p>
+            </div>
+            <div class="service-visual card countdown-card">
+              <span class="mono muted">CRA full application</span>
+              <div class="countdown" id="cra-countdown" aria-live="off">
+                <div><b id="cd-days">—</b><span>days</span></div>
+                <div><b id="cd-hours">—</b><span>hours</span></div>
+                <div><b id="cd-mins">—</b><span>min</span></div>
+              </div>
+              <div class="timeline">
+                <div class="tl done"><i></i><span><b>11 Sep 2026</b> Reporting duties apply: 24 h early warning, 72 h notification</span></div>
+                <div class="tl next"><i></i><span><b>11 Dec 2027</b> Full application: SBOM and vulnerability handling required for the EU market</span></div>
+              </div>
+              <div class="sbom-preview code" aria-hidden="true">
+                <div class="c"># ros-sbom ./ws --format cyclonedx  (preview)</div>
+                <div>nav2_bringup <span class="c">→</span> <span class="s">ros-jazzy-nav2-bringup</span></div>
+                <div>rclcpp <span class="c">→</span> <span class="s">ros-jazzy-rclcpp 28.1.6</span></div>
+                <div>eigen <span class="c">(rosdep)→</span> <span class="s">libeigen3-dev 3.4.0</span></div>
+                <div>pyyaml <span class="c">(rosdep)→</span> <span class="s">python3-yaml 6.0.1</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <hr class="divider" />
+
+      <!-- How an audit works -->
+      <section id="process">
+        <div class="container">
+          <div class="section-head reveal">
+            <span class="eyebrow">How an engagement works</span>
+            <h2>Contract in. <span class="grad-text">Evidence out.</span></h2>
+          </div>
+          <ol class="steps">
+            <li class="card reveal"><span class="step-n">01</span><h3>Define</h3><p class="muted">We turn your requirements into a machine-checkable contract or SBOM scope, written in plain JSON that you own.</p></li>
+            <li class="card reveal" data-d="1"><span class="step-n">02</span><h3>Pilot</h3><p class="muted">We run it on a small batch or one product line and tune the thresholds with your engineers.</p></li>
+            <li class="card reveal" data-d="2"><span class="step-n">03</span><h3>Run</h3><p class="muted">We check every delivery or release with the same open tools, and keep hashes of the inputs.</p></li>
+            <li class="card reveal" data-d="3"><span class="step-n">04</span><h3>Report</h3><p class="muted">You get decision-ready reports, with evidence your vendors, auditors and customers can verify themselves.</p></li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- Privacy -->
+      <section id="privacy" class="privacy">
+        <div class="container privacy-grid">
+          <div class="reveal">
+            <span class="eyebrow">Privacy by architecture</span>
+            <h2>Your recordings <span class="grad-text">never leave</span> your browser.</h2>
+            <p class="lead">Robot recordings can contain camera feeds, floor plans and customer sites. So the Tracecheck web app has no server-side processing at all.</p>
+          </div>
+          <ul class="privacy-list reveal">
+            <li><b>Static site.</b> HTML, JavaScript and fonts only, all served from this domain. There are no analytics, trackers or third-party scripts.</li>
+            <li><b>Local worker.</b> Files are read in 8 MiB slices by a Web Worker on your device.</li>
+            <li><b>Locked-down network.</b> The Content-Security-Policy only allows connections back to this site, which hosts only the demo files.</li>
+            <li><b>Inspectable.</b> The code is open source under Apache-2.0. You can read it, build it, or run it offline.</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- CTA -->
+      <section class="cta-section">
+        <div class="container">
+          <div class="cta card reveal">
+            <div>
+              <h2>Let's take a load off your robot data.</h2>
+              <p class="lead">Tell us about your recordings, your data vendors or your EU launch date. You'll get a straight answer about whether we can help.</p>
+            </div>
+            <div class="cta-actions">
+              <a class="btn btn-primary" href="mailto:hello@backplanerobotics.com" id="cta-email">hello@backplanerobotics.com <span class="arrow">→</span></a>
+              <a class="btn" href="/tracecheck/" id="cta-app">Try Tracecheck</a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container">
+        <div class="footer-grid">
+          <div>
+            <a class="brand" href="/" id="footer-home"><img src="/favicon.svg" alt="" width="34" height="34" /><span>Backplane Robotics</span></a>
+            <p class="muted footer-blurb">Behind-the-scenes software and services for the robotics industry.</p>
+          </div>
+          <div>
+            <h4>Product</h4>
+            <ul>
+              <li><a href="/tracecheck/" id="footer-app">Tracecheck web app</a></li>
+              <li><a href="https://github.com/backplane-robotics/backplane-tracecheck" id="footer-github" rel="noopener">GitHub</a></li>
+              <li><a href="https://pypi.org/project/backplane-tracecheck/" id="footer-pypi" rel="noopener">PyPI</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4>Services</h4>
+            <ul>
+              <li><a href="#audits" id="footer-audits">Data Acceptance Audits</a></li>
+              <li><a href="#cra" id="footer-cra">CRA readiness</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4>Company</h4>
+            <ul>
+              <li><a href="mailto:hello@backplanerobotics.com" id="footer-email">Contact</a></li>
+              <li><a href="#privacy" id="footer-privacy">Privacy</a></li>
+            </ul>
+          </div>
+        </div>
+        <div class="footer-base">
+          <span>© <span id="year">2026</span> Backplane Robotics LLC.</span>
+          <span>Tracecheck is open source under the Apache License 2.0.</span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,47 @@
+# Changelog
+
+All notable changes to this project are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
+[Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+## [0.2.0] - 2026-10-14
+
+### Added
+- **Compressed chunks.** zstd and lz4 chunks are decoded, with output strictly capped at the declared uncompressed size, so decompression bombs fail safely.
+- **Streaming reader** (`tracecheck.reader`): a self-contained, bounded MCAP parser. SHA-256 and CRCs are computed in a single pass, and memory is bounded by explicit limits. The 64 MiB file-size cap is gone.
+- **Fast mode** (`--fast`): reads only the summary section for an instant inventory, counts, schemas and metadata check. It falls back to a full scan when the summary is missing or incomplete.
+- **`missing_crc` contract key** (`"warn"` or `"ignore"`) and the `--ignore-missing-crc` flag.
+- Summary-section CRC verification.
+- CLI flags: `--fail-on`, `--timeout`, `--max-chunk-mib`, `--max-record-mib`, `--max-tracked-messages`, `--quiet`, `--version`, and `samples --dest`.
+- Report fields (`report_version` 2): `scan_mode`, `fast_mode_fallback`, `compression`, `scan_stats`, `checksum_coverage`.
+- More synthetic examples: zstd, lz4, unchunked, no-CRC, unsupported-codec, malformed and truncated files, plus a 4-topic mobile-robot recording with and without a sensor dropout. `examples/expected.json` holds the golden results shared by the Python and browser test suites.
+- **Web app** (`web/`): a browser-only static site for backplanerobotics.com with the Tracecheck app.
+  - A JavaScript port of the engine running in a Web Worker. Files never leave the browser.
+  - Handles multi-GB files and zstd/lz4 chunks.
+  - Demo recordings, a contract editor, and JSON/HTML report downloads.
+  - Reports are byte-identical to the Python CLI's, apart from timestamps and tool fields.
+  - A strict Content-Security-Policy.
+
+### Changed
+- Renamed the project from "Recording Health Checker" to **Backplane Tracecheck**.
+  - The Python package `rhc` is now `tracecheck`.
+  - The PyPI distribution is `backplane-tracecheck`.
+  - The CLI command is `tracecheck`.
+- `tracecheck check` runs in-process, with no subprocess and no size cap. The local `serve` UI keeps its 64 MiB upload limit.
+- **Missing-CRC rule.** C01 now warns only when some message data has no CRC coverage. Default ROS 2 files, which have chunk CRCs but no data-section CRC, now pass.
+- Packaged with `pyproject.toml` (hatchling), replacing `requirements*.txt` and the Windows `.cmd` launchers.
+- Relicensed as Apache-2.0 open source.
+
+### Fixed
+- The local server no longer returns stderr text or the user's home path in error responses.
+- The local server now requires a matching `Origin` header on POST requests.
+
+### Removed
+- MVP governance, evidence, QA and marketing files were moved out of the repository into a local archive.
+
+## [0.1.0] - 2026-10-13
+
+### Added
+- Initial MVP: CLI and local browser UI, 10 contract checks, JSON and HTML reports, and synthetic examples.

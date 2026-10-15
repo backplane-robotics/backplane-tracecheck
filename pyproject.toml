@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "backplane-tracecheck"
+dynamic = ["version"]
+description = "Check robot recordings (MCAP) against an explicit, versioned recording contract."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Backplane Robotics LLC" }]
+keywords = ["robotics", "mcap", "ros2", "data-quality", "rosbag", "recording"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = [
+    # Only used to write the synthetic sample recordings (tracecheck.samples);
+    # the reader is a self-contained parser.
+    "mcap>=1.5,<2",
+    "zstandard>=0.22",
+    "lz4>=4.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6", "build>=1.2"]
+
+[project.scripts]
+tracecheck = "tracecheck.__main__:main"
+
+[project.urls]
+Homepage = "https://backplanerobotics.com"
+Source = "https://github.com/backplane-robotics/backplane-tracecheck"
+Issues = "https://github.com/backplane-robotics/backplane-tracecheck/issues"
+Changelog = "https://github.com/backplane-robotics/backplane-tracecheck/blob/main/CHANGELOG.md"
+
+[tool.hatch.version]
+path = "src/tracecheck/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tracecheck"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/", "tests/", "examples/", "docs/", "README.md", "CHANGELOG.md", "LICENSE", "NOTICE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["archive", "web"]

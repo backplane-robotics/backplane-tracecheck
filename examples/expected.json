@@ -1,0 +1,260 @@
+{
+  "description": "Expected results for examples/. Shared by tests/test_streaming.py and web tests.",
+  "cases": [
+    {
+      "file": "clean.mcap",
+      "contract": "demo-contract.json",
+      "overall": "pass",
+      "scan_complete": true,
+      "checks": {
+        "C01": "pass",
+        "C02": "pass",
+        "C03": "pass",
+        "C04": "pass",
+        "C05": "pass",
+        "C06": "pass",
+        "C07": "pass",
+        "C08": "pass",
+        "C09": "pass",
+        "C10": "pass"
+      }
+    },
+    {
+      "file": "clean-zstd.mcap",
+      "contract": "demo-contract.json",
+      "overall": "pass",
+      "scan_complete": true,
+      "checks": {
+        "C01": "pass",
+        "C02": "pass",
+        "C03": "pass",
+        "C04": "pass",
+        "C05": "pass",
+        "C06": "pass",
+        "C07": "pass",
+        "C08": "pass",
+        "C09": "pass",
+        "C10": "pass"
+      }
+    },
+    {
+      "file": "clean-lz4.mcap",
+      "contract": "demo-contract.json",
+      "overall": "pass",
+      "scan_complete": true,
+      "checks": {
+        "C01": "pass",
+        "C02": "pass",
+        "C03": "pass",
+        "C04": "pass",
+        "C05": "pass",
+        "C06": "pass",
+        "C07": "pass",
+        "C08": "pass",
+        "C09": "pass",
+        "C10": "pass"
+      }
+    },
+    {
+      "file": "faults.mcap",
+      "contract": "demo-contract.json",
+      "overall": "fail",
+      "scan_complete": true,
+      "checks": {
+        "C01": "pass",
+        "C02": "pass",
+        "C03": "pass",
+        "C04": "fail",
+        "C05": "fail",
+        "C06": "fail",
+        "C07": "fail",
+        "C08": "fail",
+        "C09": "fail",
+        "C10": "pass"
+      }
+    },
+    {
+      "file": "unchunked.mcap",
+      "contract": "demo-contract.json",
+      "overall": "pass",
+      "scan_complete": true,
+      "checks": {
+        "C01": "pass",
+        "C02": "pass",
+        "C03": "pass",
+        "C04": "pass",
+        "C05": "pass",
+        "C06": "pass",
+        "C07": "pass",
+        "C08": "pass",
+        "C09": "pass",
+        "C10": "pass"
+      }
+    },
+    {
+      "file": "no-crc.mcap",
+      "contract": "demo-contract.json",
+      "overall": "warn",
+      "scan_complete": true,
+      "checks": {
+        "C01": "warn",
+        "C02": "pass",
+        "C03": "pass",
+        "C04": "pass",
+        "C05": "pass",
+        "C06": "pass",
+        "C07": "pass",
+        "C08": "pass",
+        "C09": "pass",
+        "C10": "pass"
+      }
+    },
+    {
+      "file": "unsupported-codec.mcap",
+      "contract": "demo-contract.json",
+      "overall": "fail",
+      "scan_complete": false,
+      "checks": {
+        "C01": "fail",
+        "C02": "skipped",
+        "C03": "skipped",
+        "C04": "skipped",
+        "C05": "skipped",
+        "C06": "skipped",
+        "C07": "skipped",
+        "C08": "skipped",
+        "C09": "skipped",
+        "C10": "skipped"
+      }
+    },
+    {
+      "file": "malformed.mcap",
+      "contract": "demo-contract.json",
+      "overall": "fail",
+      "scan_complete": false,
+      "checks": {
+        "C01": "fail",
+        "C02": "skipped",
+        "C03": "skipped",
+        "C04": "skipped",
+        "C05": "skipped",
+        "C06": "skipped",
+        "C07": "skipped",
+        "C08": "skipped",
+        "C09": "skipped",
+        "C10": "skipped"
+      }
+    },
+    {
+      "file": "truncated.mcap",
+      "contract": "demo-contract.json",
+      "overall": "fail",
+      "scan_complete": false,
+      "checks": {
+        "C01": "fail",
+        "C02": "skipped",
+        "C03": "skipped",
+        "C04": "skipped",
+        "C05": "skipped",
+        "C06": "skipped",
+        "C07": "skipped",
+        "C08": "skipped",
+        "C09": "skipped",
+        "C10": "skipped"
+      }
+    },
+    {
+      "file": "clean-zstd.mcap",
+      "contract": "demo-contract.json",
+      "fast": true,
+      "overall": "pass",
+      "scan_complete": true,
+      "checks": {
+        "C01": "pass",
+        "C02": "pass",
+        "C03": "pass",
+        "C04": "pass",
+        "C05": "pass",
+        "C06": "skipped",
+        "C07": "skipped",
+        "C08": "skipped",
+        "C09": "skipped",
+        "C10": "skipped"
+      }
+    },
+    {
+      "file": "faults.mcap",
+      "contract": "demo-contract.json",
+      "fast": true,
+      "overall": "fail",
+      "scan_complete": true,
+      "checks": {
+        "C01": "pass",
+        "C02": "pass",
+        "C03": "pass",
+        "C04": "fail",
+        "C05": "fail",
+        "C06": "skipped",
+        "C07": "skipped",
+        "C08": "skipped",
+        "C09": "skipped",
+        "C10": "skipped"
+      }
+    },
+    {
+      "file": "fleet-zstd.mcap",
+      "contract": "fleet-contract.json",
+      "overall": "pass",
+      "scan_complete": true,
+      "checks": {
+        "C01": "pass",
+        "C02": "pass",
+        "C03": "pass",
+        "C04": "pass",
+        "C05": "skipped",
+        "C06": "pass",
+        "C07": "pass",
+        "C08": "pass",
+        "C09": "skipped",
+        "C10": "skipped"
+      }
+    },
+    {
+      "file": "fleet-zstd.mcap",
+      "contract": "fleet-contract.json",
+      "fast": true,
+      "overall": "pass",
+      "scan_complete": true,
+      "checks": {
+        "C01": "pass",
+        "C02": "pass",
+        "C03": "pass",
+        "C04": "pass",
+        "C05": "skipped",
+        "C06": "skipped",
+        "C07": "skipped",
+        "C08": "skipped",
+        "C09": "skipped",
+        "C10": "skipped"
+      }
+    },
+    {
+      "file": "fleet-dropout-lz4.mcap",
+      "contract": "fleet-contract.json",
+      "overall": "fail",
+      "scan_complete": true,
+      "checks": {
+        "C01": "pass",
+        "C02": "pass",
+        "C03": "pass",
+        "C04": "pass",
+        "C05": "skipped",
+        "C06": "pass",
+        "C07": "fail",
+        "C08": "pass",
+        "C09": "skipped",
+        "C10": "skipped"
+      }
+    }
+  ]
+}

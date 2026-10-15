@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "name": "Synthetic 10 Hz demo (edit for your recording)",
+  "profile": "",
+  "metadata": {
+    "session": {
+      "software_version": "demo-1"
+    }
+  },
+  "topics": {
+    "/demo/position": {
+      "required": true,
+      "message_encoding": "json",
+      "schema_name": "DemoPosition",
+      "schema_encoding": "jsonschema",
+      "min_count": 11,
+      "max_count": 11,
+      "clock_confirmed": true,
+      "time_basis": "log_time",
+      "min_rate_hz": 10,
+      "max_rate_hz": 10,
+      "max_gap_ns": 100000000,
+      "check_regression": true,
+      "sequence": "increment_mod32",
+      "interval_ns": [
+        0,
+        1000000000
+      ],
+      "boundary_tolerance_ns": 0
+    }
+  }
+}
