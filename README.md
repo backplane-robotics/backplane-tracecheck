@@ -2,13 +2,13 @@
 
 **Check robot recordings against an explicit recording contract.**
 
-Tracecheck reads an [MCAP](https://mcap.dev) recording (the default ROS 2 bag format) and checks it against a small JSON *recording contract*: which topics must be present, their schemas and encodings, message counts, rates, timestamp gaps, regressions, sequence continuity and time coverage. It produces a JSON report and a readable HTML report. Each finding points to an exact byte offset in the file.
+Tracecheck reads an [MCAP](https://mcap.dev) recording (the default ROS 2 bag format) and checks it against a small JSON *recording contract*: which topics must be present, their schemas and encodings, message counts, rates, timestamp gaps, regressions, sequence continuity and time coverage. It produces a JSON report and a readable HTML report. Findings include relevant file locations where available; missing items are reported as gaps.
 
 - Free and open source (Apache-2.0).
 - Read-only. Message payloads are never decoded or executed.
 - No robot, ROS install, account or cloud service needed.
-- Streams files of any size. Handles zstd and lz4 chunks safely.
-- Runs as a Python CLI or entirely in your browser at **[backplanerobotics.com/tracecheck](https://backplanerobotics.com/tracecheck/)**, where files never leave your device.
+- Streams large recordings, subject to processing limits and available device resources (see the limit options below). zstd and lz4 chunks are decoded with bounded output.
+- Runs as a Python CLI or in your browser at **[backplanerobotics.com/tracecheck](https://backplanerobotics.com/tracecheck/)**, where recording files are processed on your device and not uploaded.
 
 Built by [Backplane Robotics](https://backplanerobotics.com).
 
@@ -54,8 +54,8 @@ tracecheck serve --open
 ## In the browser
 
 [backplanerobotics.com/tracecheck](https://backplanerobotics.com/tracecheck/) runs the same checks in a Web Worker, using a JavaScript port of the engine in [`web/src/engine/`](https://github.com/backplane-robotics/backplane-tracecheck/tree/main/web/src/engine).
-- The file is read locally in slices and never uploaded.
-- The site's Content-Security-Policy blocks connections to any other origin.
+- The recording file is read locally in slices and not uploaded.
+- The site's Content-Security-Policy only allows connections back to the site itself.
 - For the same inputs, the browser and CLI produce identical JSON reports, apart from timestamps and tool fields. The web test suite checks this.
 
 ## A minimal contract
@@ -93,7 +93,7 @@ Start minimal, then read the report's channel inventory to see the actual schema
 - **FAIL:** an unmet requirement or a failed scan. It does not mean the robot is unsafe.
 - **SKIPPED:** no conclusion was reached.
 
-Tracecheck does not certify safety, establish regulatory compliance, determine causality or measure transport latency.
+Tracecheck does not certify safety, establish legal or regulatory compliance, determine causality or measure transport latency. File hashes in reports identify the exact bytes checked; they do not establish authenticity.
 
 ## Development
 

@@ -4,14 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tracecheck: check MCAP robot recordings in your browser | Backplane Robotics</title>
-    <meta name="description" content="Free, open-source checker for MCAP robot recordings. Validate topics, schemas, metadata, rates, gaps, timestamp regressions and sequences against a contract. Files never leave your browser; zstd, lz4 and multi-GB files supported." />
+    <meta name="description" content="Free, open-source checker for MCAP robot recordings. Check topics, schemas, metadata, rates, gaps, timestamp regressions and sequences against your recording contract. Recordings are processed in your browser and not uploaded." />
     <link rel="canonical" href="https://backplanerobotics.com/tracecheck/" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="theme-color" content="#05080d" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Backplane Robotics" />
     <meta property="og:title" content="Backplane Tracecheck: MCAP recording checks in your browser" />
-    <meta property="og:description" content="Contract-based checks for robot recordings. Nothing is uploaded." />
+    <meta property="og:description" content="Check robot recordings against your own requirements. Recording files are processed locally and not uploaded." />
     <meta property="og:url" content="https://backplanerobotics.com/tracecheck/" />
     <script type="module" src="/src/app.js"></script>
   </head>
@@ -26,10 +26,9 @@
         <button class="nav-toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false"><span></span><span></span><span></span></button>
         <ul class="nav-links">
           <li><a href="/tracecheck/" aria-current="page" id="nav-tracecheck">Tracecheck</a></li>
-          <li><a href="/#audits" id="nav-audits">Data audits</a></li>
-          <li><a href="/#cra" id="nav-cra">CRA readiness</a></li>
+          <li><a href="/#privacy" id="nav-privacy">Privacy</a></li>
+          <li><a href="/#services" id="nav-services">Planned tools</a></li>
           <li><a href="https://github.com/backplane-robotics/backplane-tracecheck" rel="noopener" id="nav-github">GitHub</a></li>
-          <li><a class="btn btn-sm" href="mailto:hello@backplanerobotics.com" id="nav-contact">Contact</a></li>
         </ul>
       </nav>
     </header>
@@ -39,11 +38,11 @@
         <div>
           <span class="eyebrow">Backplane Tracecheck · <span id="app-version">v0.2.0</span></span>
           <h1>Check a robot recording <span class="grad-text">against its contract.</span></h1>
-          <p class="lead">Drop an MCAP file, choose or write a recording contract, and get evidence-backed results. Processing happens on this device. The file is never uploaded.</p>
+          <p class="lead">Drop an MCAP file, choose or write a recording contract, and review the findings. Processing happens on this device. The recording file is not uploaded.</p>
         </div>
         <div class="local-badge" id="local-badge">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg>
-          <div><b>Local-only processing</b><span>0 bytes uploaded · no trackers</span></div>
+          <div><b>Recordings processed locally</b><span>Recording data uploaded: 0 bytes</span></div>
         </div>
       </div>
 
@@ -58,7 +57,7 @@
             </div>
             <div class="dz-text">
               <b id="dz-title">Drop an .mcap file here</b>
-              <span id="dz-sub">or click to browse · zstd, lz4 or uncompressed · any size</span>
+              <span id="dz-sub">or click to browse · zstd, lz4 or uncompressed · large files are streamed</span>
             </div>
           </label>
           <div class="demo-head">
@@ -156,13 +155,13 @@
           <div class="table-wrap"><table id="inventory-table"><thead><tr><th>ID</th><th>Topic</th><th>Messages</th><th>Encoding</th><th>Schema</th></tr></thead><tbody></tbody></table></div>
         </div>
 
-        <div class="upsell card">
+        <aside class="upsell card" aria-labelledby="h-upsell">
           <div>
-            <h3>Checking data you bought?</h3>
-            <p class="muted">Backplane runs independent <b>Data Acceptance Audits</b>: your contract, every vendor batch, with evidence for each rejected episode.</p>
+            <h3 id="h-upsell">Checking many recordings? <span class="pill soon">Coming soon</span></h3>
+            <p class="muted"><b>Tracecheck Pro</b> is a planned paid edition for checking batches of recordings on your own device. Planned features include folder-based processing, saved requirements and combined reports.</p>
           </div>
-          <a class="btn btn-primary" href="/#audits" id="upsell-audits">Learn about audits <span class="arrow">→</span></a>
-        </div>
+          <a class="btn btn-sm" href="/#tracecheck-pro" id="upsell-pro">About Tracecheck Pro <span class="arrow">→</span></a>
+        </aside>
       </section>
 
       <div class="error-box" id="error-box" role="alert" hidden></div>
