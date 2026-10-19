@@ -1,29 +1,49 @@
 {
-  // Cloudflare Workers deployment for backplanerobotics.com.
-  // Build: cd web && npm ci && npm run build   Deploy (from the repository root): npx wrangler deploy
-  // Static pages are served directly from assets. Only /api/* runs the Worker script (web/worker/index.js),
-  // which hosts the optional feedback endpoint. Recording processing stays in the browser and never uses it.
-  // Security headers for static assets come from web/public/_headers; the Worker sets its own response headers.
-  // Feedback storage setup and private access: see docs/FEEDBACK.md.
-  "$schema": "./web/node_modules/wrangler/config-schema.json",
-  "name": "backplane-tracecheck",
-  "main": "./web/worker/index.js",
-  "compatibility_date": "2026-10-12",
-  "assets": {
-    "directory": "./web/dist",
-    "binding": "ASSETS",
-    "html_handling": "auto-trailing-slash",
-    "not_found_handling": "none",
-    "run_worker_first": ["/api/*"]
-  },
-  // Private feedback store. Replace the id with the value printed by
-  // `npx wrangler kv namespace create FEEDBACK` before deploying (deploy fails until then).
-  "kv_namespaces": [{ "binding": "FEEDBACK", "id": "REPLACE_WITH_FEEDBACK_KV_NAMESPACE_ID" }],
-  // 5 feedback submissions per minute per client, counted in memory at the edge. Not stored.
-  "ratelimits": [{ "name": "FEEDBACK_LIMITER", "namespace_id": "1001", "simple": { "limit": 5, "period": 60 } }],
-  "workers_dev": false,
-  "preview_urls": false,
-  // Invocation logs would record request metadata (including client IPs) for every feedback request,
-  // so they are disabled. The Worker itself never logs.
-  "observability": { "enabled": true, "logs": { "invocation_logs": false } }
+	// Cloudflare Workers deployment for backplanerobotics.com.
+	// Build: cd web && npm ci && npm run build   Deploy (from the repository root): npx wrangler deploy
+	// Static pages are served directly from assets. Only /api/* runs the Worker script (web/worker/index.js),
+	// which hosts the optional feedback endpoint. Recording processing stays in the browser and never uses it.
+	// Security headers for static assets come from web/public/_headers; the Worker sets its own response headers.
+	// Feedback storage setup and private access: see docs/FEEDBACK.md.
+	"$schema": "./web/node_modules/wrangler/config-schema.json",
+	"name": "backplane-tracecheck",
+	"main": "./web/worker/index.js",
+	"compatibility_date": "2026-10-12",
+	"assets": {
+		"directory": "./web/dist",
+		"binding": "ASSETS",
+		"html_handling": "auto-trailing-slash",
+		"not_found_handling": "none",
+		"run_worker_first": [
+			"/api/*"
+		]
+	},
+	// Private feedback store (Workers KV namespace "FEEDBACK", created 2026-10-18). See docs/FEEDBACK.md.
+	"kv_namespaces": [
+		{
+			"binding": "FEEDBACK",
+			"id": "52b459cdbe3142ba818ab61570db4da0"
+		}
+	],
+	// 5 feedback submissions per minute per client, counted in memory at the edge. Not stored.
+	"ratelimits": [
+		{
+			"name": "FEEDBACK_LIMITER",
+			"namespace_id": "1001",
+			"simple": {
+				"limit": 5,
+				"period": 60
+			}
+		}
+	],
+	"workers_dev": false,
+	"preview_urls": false,
+	// Invocation logs would record request metadata (including client IPs) for every feedback request,
+	// so they are disabled. The Worker itself never logs.
+	"observability": {
+		"enabled": true,
+		"logs": {
+			"invocation_logs": false
+		}
+	}
 }
