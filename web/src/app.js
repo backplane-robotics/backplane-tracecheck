@@ -5,6 +5,7 @@ import { initChrome, toast } from './chrome.js';
 import { ContractError, loads } from './engine/contract.js';
 import { VERSION } from './engine/engine.js';
 import { PyFloat, parse } from './engine/json.js';
+import { initFeedback } from './feedback.js';
 
 initChrome();
 
@@ -17,6 +18,8 @@ const ui = {
   results: $('results'), error: $('error-box'),
 };
 $('app-version').textContent = `v${VERSION}`;
+// Feedback receives only the app version; it has no access to scan state.
+initFeedback({ version: VERSION });
 
 const state = { file: null, demo: null, contractOk: false, worker: null, report: null, json: '', html: '', running: false };
 
@@ -220,6 +223,7 @@ let runStarted = 0;
 function run() {
   if (ui.run.disabled) return;
   ui.error.hidden = true;
+  $('error-actions').hidden = true;
   ui.results.hidden = true;
   state.running = true;
   updateRun();
@@ -252,6 +256,7 @@ function fail(message) {
   stopRunning();
   ui.error.textContent = message;
   ui.error.hidden = false;
+  $('error-actions').hidden = false;
 }
 
 function onWorkerMessage({ data }) {

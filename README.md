@@ -56,6 +56,7 @@ tracecheck serve --open
 [backplanerobotics.com/tracecheck](https://backplanerobotics.com/tracecheck/) runs the same checks in a Web Worker, using a JavaScript port of the engine in [`web/src/engine/`](https://github.com/backplane-robotics/backplane-tracecheck/tree/main/web/src/engine).
 - The recording file is read locally in slices and not uploaded.
 - The site's Content-Security-Policy only allows connections back to the site itself.
+- An optional **Send feedback** form posts only the fields shown in it to `/api/feedback`. It never attaches recordings, reports, contracts or filenames. See [docs/FEEDBACK.md](https://github.com/backplane-robotics/backplane-tracecheck/blob/main/docs/FEEDBACK.md).
 - For the same inputs, the browser and CLI produce identical JSON reports, apart from timestamps and tool fields. The web test suite checks this.
 
 ## A minimal contract

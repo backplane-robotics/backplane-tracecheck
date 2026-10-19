@@ -143,6 +143,7 @@
 .privacy-list li { padding: 18px 20px 18px 54px; position: relative; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); }
 .privacy-list li b { color: var(--text); }
 .privacy-list li a { color: var(--teal); }
+.privacy-feedback { grid-column: 1 / -1; margin: 0; max-width: 90ch; font-size: 0.9rem; color: var(--dim); }
 .local-chip { display: inline-flex; align-items: center; gap: 10px; margin-top: 8px; padding: 10px 16px; border-radius: 999px; border: 1px solid rgba(42, 245, 210, 0.3); background: rgba(42, 245, 210, 0.06); font: 600 0.8rem var(--mono); color: var(--teal); }
 .local-chip::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 10px var(--teal); }
 .local-chip b { font-weight: 600; }

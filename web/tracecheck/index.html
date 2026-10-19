@@ -142,6 +142,7 @@
             <button class="btn btn-sm" id="dl-json" type="button">Download JSON</button>
             <button class="btn btn-sm" id="dl-html" type="button">Download HTML report</button>
             <button class="btn btn-sm" id="new-check" type="button">New check</button>
+            <button class="btn btn-sm btn-quiet" id="fb-open-results" type="button" data-feedback-open>Send feedback</button>
           </div>
         </div>
 
@@ -165,12 +166,57 @@
       </section>
 
       <div class="error-box" id="error-box" role="alert" hidden></div>
+      <p class="error-actions" id="error-actions" hidden>Something not working as expected? <button class="btn btn-sm btn-quiet" id="fb-open-error" type="button" data-feedback-open>Send feedback</button></p>
     </main>
+
+    <dialog class="feedback-dialog" id="feedback-dialog" aria-labelledby="fb-title" aria-describedby="fb-notice">
+      <form id="feedback-form" novalidate>
+        <div class="fb-head">
+          <h2 id="fb-title">Send feedback</h2>
+          <button type="button" class="fb-x" id="fb-x" aria-label="Close feedback form">×</button>
+        </div>
+        <p class="fb-notice" id="fb-notice">Send product feedback only. Do not include recordings, customer information, credentials, or confidential project details. We do not provide compliance assessments through this form.</p>
+
+        <fieldset class="fb-group">
+          <legend>Feedback type <span class="fb-req">required</span></legend>
+          <label class="fb-choice"><input type="radio" name="type" value="did_not_work" id="fb-type-did-not-work" required /> <span>Something did not work</span></label>
+          <label class="fb-choice"><input type="radio" name="type" value="improvement" id="fb-type-improvement" /> <span>Suggest an improvement</span></label>
+          <label class="fb-choice"><input type="radio" name="type" value="experience" id="fb-type-experience" /> <span>Share an experience</span></label>
+        </fieldset>
+
+        <fieldset class="fb-group">
+          <legend>Did Tracecheck help with your task? <span class="fb-opt">optional</span></legend>
+          <label class="fb-choice"><input type="radio" name="helped" value="yes" id="fb-helped-yes" /> <span>Yes</span></label>
+          <label class="fb-choice"><input type="radio" name="helped" value="partly" id="fb-helped-partly" /> <span>Partly</span></label>
+          <label class="fb-choice"><input type="radio" name="helped" value="no" id="fb-helped-no" /> <span>No</span></label>
+          <label class="fb-choice"><input type="radio" name="helped" value="not_sure" id="fb-helped-not-sure" /> <span>Not sure</span></label>
+        </fieldset>
+
+        <label class="fb-label" for="fb-message">Your feedback</label>
+        <textarea id="fb-message" name="message" rows="4" maxlength="2000" required aria-describedby="fb-count fb-sent"></textarea>
+        <div class="fb-meta">
+          <span id="fb-count" class="mono">0 / 2,000</span>
+          <span>App version <b class="mono" id="fb-version">v0.2.0</b> is included</span>
+        </div>
+        <p class="fb-sent" id="fb-sent">Only the fields above are sent to Backplane. Recordings, reports, contracts and filenames are not attached. This form does not provide individual replies.</p>
+        <p class="fb-status" id="fb-status" role="status" aria-live="polite"></p>
+        <div class="fb-actions">
+          <button type="button" class="btn btn-sm" id="fb-cancel">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-primary" id="fb-submit">Submit feedback</button>
+        </div>
+      </form>
+      <div class="fb-success" id="fb-success" hidden>
+        <h2>Feedback received</h2>
+        <p>Thank you for helping improve Tracecheck. This form does not provide individual replies.</p>
+        <div class="fb-actions"><button type="button" class="btn btn-sm" id="fb-done">Close</button></div>
+      </div>
+    </dialog>
 
     <footer class="site-footer">
       <div class="container footer-base app-footer">
         <span>© <span id="year">2026</span> Backplane Robotics LLC</span>
         <span>Tracecheck is open source (Apache-2.0). Results are contract observations, not safety or compliance certification.</span>
+        <button class="link-btn" id="fb-open-footer" type="button" data-feedback-open>Send feedback</button>
       </div>
     </footer>
   </body>
