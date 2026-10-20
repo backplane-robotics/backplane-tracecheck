@@ -12,15 +12,15 @@
     {
       "id": "husqvarna-automower-v-iq",
       "manufacturer": "Husqvarna AB",
-      "equipment": ["Automower 305V iQ", "Automower 310V iQ", "Automower 420V iQ", "Automower 440V iQ"],
+      "equipment": ["305v IQ", "310v IQ", "420v IQ", "440v IQ"],
       "category": "Robotic lawn mower",
       "notice_number": "DA 26-957",
       "date_announced": "2026-09-09",
       "status": "Conditional approval",
-      "conditions_summary": "The FCC's list of robotic-device conditional approvals (Appendix B of DA 26-996 and later notices, most recently DA 26-1114) names Husqvarna AB's 305v IQ, 310v IQ, 420v IQ and 440v IQ robotic platforms, approved September 9, 2026, with no termination date. The notice number DA 26-957 is reported but not yet confirmed.",
+      "conditions_summary": "Announced in DA 26-957 alongside router approvals. The four named robotic platforms are listed with no termination date. Per later FCC notices, robotic-device approvals without a termination date remain effective while the company abides by its onshoring plan and updated product vetting.",
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-957A1.pdf",
       "secondary_sources": [],
-      "verified_against_primary": false,
+      "verified_against_primary": true,
       "last_checked": "2026-10-20"
     },
     {
