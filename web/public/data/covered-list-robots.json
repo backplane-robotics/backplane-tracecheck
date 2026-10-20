@@ -5,8 +5,8 @@
   "designation": {
     "notice_number": "DA 26-786",
     "date": "2026-07-28",
-    "summary": "Foreign-produced advanced robotic devices were added to the FCC Covered List. New FCC equipment authorizations are blocked for covered equipment; existing authorizations and devices already in use are reported as unaffected.",
-    "verified_against_primary": false
+    "summary": "On July 28, 2026 the FCC added to the Covered List foreign-produced advanced robotic devices, except those granted a Conditional Approval by the Department of War (DA 26-786, as cited in DA 26-996).",
+    "verified_against_primary": true
   },
   "entries": [
     {
@@ -17,7 +17,7 @@
       "notice_number": "DA 26-957",
       "date_announced": "2026-09-09",
       "status": "Conditional approval",
-      "conditions_summary": "Reported as the first robotics conditional approval. Applies to the four named models only.",
+      "conditions_summary": "The FCC's list of robotic-device conditional approvals (Appendix B of DA 26-996) names Husqvarna AB's 305v IQ, 310v IQ, 420v IQ and 440v IQ robotic platforms, approved September 9, 2026, with no termination date. The notice number DA 26-957 is reported but not yet confirmed.",
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-957A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": false,
@@ -31,10 +31,10 @@
       "notice_number": "DA 26-996",
       "date_announced": "2026-09-18",
       "status": "Conditional approval",
-      "conditions_summary": "Reported as effective indefinitely, subject to continued compliance with the company's onshoring plan.",
+      "conditions_summary": "Exemption is “subject to ANSCER’s continuous compliance with the onshoring plan outlined in its conditional approval application and pursuant to updated vetting of its products.” No termination date; failure to comply or a misrepresentation could end the approval and return the equipment to the Covered List.",
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-996A1.pdf",
       "secondary_sources": [],
-      "verified_against_primary": false,
+      "verified_against_primary": true,
       "last_checked": "2026-10-20"
     },
     {
