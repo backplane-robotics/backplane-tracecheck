@@ -6,7 +6,7 @@ import { defineConfig } from 'vite';
 // built site can be tested locally under exactly the policy it ships with.
 const CSP = readFileSync(resolve(import.meta.dirname, 'public/_headers'), 'utf8').match(/Content-Security-Policy: (.+)/)[1].trim();
 
-// Multi-page static site: the landing page and the Tracecheck app.
+// Multi-page static site: the landing page, the Tracecheck app and the Covered List tracker.
 export default defineConfig({
   build: {
     target: 'es2022',
@@ -14,6 +14,7 @@ export default defineConfig({
       input: {
         main: resolve(import.meta.dirname, 'index.html'),
         tracecheck: resolve(import.meta.dirname, 'tracecheck/index.html'),
+        coveredListRobots: resolve(import.meta.dirname, 'tools/covered-list-robots/index.html'),
       },
     },
   },

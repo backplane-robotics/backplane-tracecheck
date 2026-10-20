@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FCC Covered List Robot Tracker: conditional approvals for robotic devices | Backplane Robotics</title>
+    <meta name="description" content="Free, searchable list of publicly announced FCC Covered List conditional approvals for foreign-produced advanced robotic devices, with notice numbers, dates and links to FCC sources. Information only, not legal advice." />
+    <link rel="canonical" href="https://backplanerobotics.com/tools/covered-list-robots/" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="theme-color" content="#05080d" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Backplane Robotics" />
+    <meta property="og:title" content="FCC Covered List Robot Tracker" />
+    <meta property="og:description" content="Searchable list of publicly announced FCC Covered List conditional approvals for advanced robotic devices. Information only, not legal advice." />
+    <meta property="og:url" content="https://backplanerobotics.com/tools/covered-list-robots/" />
+    <script type="module" src="/src/tracker.js"></script>
+  </head>
+  <body class="tracker-page">
+    <a class="sr-only" href="#main">Skip to content</a>
+    <header class="site-header">
+      <nav class="nav container" aria-label="Primary">
+        <a class="brand" href="/" id="nav-home">
+          <img src="/favicon.svg" alt="" width="34" height="34" />
+          <span>Backplane Robotics<small>Covered List tracker</small></span>
+        </a>
+        <button class="nav-toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false"><span></span><span></span><span></span></button>
+        <ul class="nav-links">
+          <li><a href="/tracecheck/" id="nav-tracecheck">Tracecheck</a></li>
+          <li><a href="/tools/covered-list-robots/" aria-current="page" id="nav-tracker">Covered List tracker</a></li>
+          <li><a href="/#privacy" id="nav-privacy">Privacy</a></li>
+          <li><a href="/#services" id="nav-services">Planned tools</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main id="main" class="container tracker-main">
+      <div class="tracker-hero">
+        <span class="eyebrow">Free reference · Updated <time id="last-updated-top" datetime="">—</time></span>
+        <h1>FCC Covered List <span class="grad-text">robot tracker</span></h1>
+        <p class="lead">
+          Publicly announced conditional approvals that exempt specific foreign-produced advanced robotic devices from the
+          FCC Covered List. Search by manufacturer, equipment or notice number.
+        </p>
+      </div>
+
+      <aside class="disclaimer card" id="disclaimer-top" aria-labelledby="h-disclaimer">
+        <h2 id="h-disclaimer" class="disclaimer-title">Information only, not legal advice.</h2>
+        <p>
+          This tracker summarizes publicly announced FCC Covered List conditional approvals for advanced robotic devices,
+          compiled by Backplane Robotics from public sources. It may be incomplete, out of date, or contain errors.
+          Exemptions apply only to the specific equipment named by the FCC, not to a manufacturer's entire product line,
+          and may carry conditions. Always confirm current status in the
+          <a href="https://www.fcc.gov/supplychain/coveredlist" id="disclaimer-covered-list" rel="noopener">official FCC Covered List</a>
+          and the referenced Public Notices, and consult qualified counsel before making import, purchasing, or
+          authorization decisions. Backplane Robotics is not affiliated with the FCC.
+        </p>
+      </aside>
+
+      <section class="tracker-context" aria-labelledby="h-context">
+        <h2 id="h-context">Background</h2>
+        <ul class="context-list">
+          <li>
+            On <b id="designation-date">28 July 2026</b> the FCC added foreign-produced “advanced robotic devices” to the
+            Covered List (reported as <span class="mono" id="designation-notice">DA 26-786</span>). This blocks new FCC equipment
+            authorizations for covered equipment. Existing authorizations and devices already in use are reported as unaffected.
+          </li>
+          <li>
+            The category is reported to cover autonomous or semi-autonomous mobile ground robots (for example AMRs, humanoids,
+            quadrupeds, and inspection, security or agricultural robots) above a weight threshold, with sensors and wireless
+            connectivity. Fixed industrial arms, drones (listed separately), underwater vehicles, rail-bound vehicles and connected
+            cars are reported as excluded.
+          </li>
+          <li>
+            “Foreign-produced” is reported to follow where a product is manufactured, not where the company is headquartered.
+          </li>
+          <li>
+            Conditional approvals follow a Department of War review and name <b>specific equipment</b>. They are reported to be
+            tied to onshoring commitments and can be revoked.
+          </li>
+        </ul>
+        <p class="tiny muted">
+          Background points are summarized from secondary sources and have not yet been checked against the FCC originals.
+          Notices in the same period also covered non-robot equipment (for example power inverters, routers and drones); those are
+          not listed here.
+        </p>
+      </section>
+
+      <section class="tracker-tool" aria-labelledby="h-list">
+        <div class="tracker-head">
+          <h2 id="h-list">Conditional approvals</h2>
+          <p class="mono muted" id="result-count" role="status" aria-live="polite">Loading…</p>
+        </div>
+
+        <form class="filters card" id="filters" role="search" aria-label="Filter conditional approvals">
+          <label class="filter filter-search" for="f-search">
+            <span>Search</span>
+            <input type="search" id="f-search" placeholder="Manufacturer, model or notice number" autocomplete="off" />
+          </label>
+          <label class="filter" for="f-manufacturer">
+            <span>Manufacturer</span>
+            <select id="f-manufacturer"><option value="">All manufacturers</option></select>
+          </label>
+          <label class="filter" for="f-category">
+            <span>Category</span>
+            <select id="f-category"><option value="">All categories</option></select>
+          </label>
+          <label class="filter" for="f-from">
+            <span>Announced from</span>
+            <input type="date" id="f-from" />
+          </label>
+          <label class="filter" for="f-to">
+            <span>Announced to</span>
+            <input type="date" id="f-to" />
+          </label>
+          <button class="btn btn-sm" type="reset" id="f-reset">Clear filters</button>
+        </form>
+
+        <div class="tracker-list" id="tracker-list"></div>
+        <p class="error-box" id="tracker-error" role="alert" hidden></p>
+
+        <div class="tracker-legend tiny muted">
+          <span><span class="pill warn">Unverified</span> Summarized from secondary sources; not yet checked against the FCC notice.</span>
+          <span><span class="pill pass">Verified</span> Checked against the FCC notice on the “last checked” date.</span>
+        </div>
+      </section>
+
+      <section class="tracker-correction card" aria-labelledby="h-correction">
+        <div>
+          <h2 id="h-correction">Spot an error or a new notice?</h2>
+          <p class="muted">Corrections are welcome. Please include the FCC notice number or a link to the source.</p>
+        </div>
+        <a class="btn" id="report-correction" href="mailto:hello@backplanerobotics.com?subject=Covered%20List%20tracker%20correction">Report a correction</a>
+      </section>
+
+      <aside class="disclaimer disclaimer-foot" id="disclaimer-bottom" aria-label="Disclaimer">
+        <p class="tiny muted">
+          <b>Information only, not legal advice.</b> This tracker summarizes publicly announced FCC Covered List conditional
+          approvals for advanced robotic devices, compiled by Backplane Robotics from public sources. It may be incomplete, out of
+          date, or contain errors. Exemptions apply only to the specific equipment named by the FCC, not to a manufacturer's entire
+          product line, and may carry conditions. Always confirm current status in the
+          <a href="https://www.fcc.gov/supplychain/coveredlist" id="disclaimer-covered-list-bottom" rel="noopener">official FCC Covered List</a>
+          and the referenced Public Notices, and consult qualified counsel before making import, purchasing, or authorization
+          decisions. Backplane Robotics is not affiliated with the FCC. Last updated <time id="last-updated-bottom" datetime="">—</time>.
+        </p>
+      </aside>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-base app-footer">
+        <span>© <span id="year">2026</span> Backplane Robotics LLC</span>
+        <span>Information only, not legal advice. Not affiliated with the FCC.</span>
+        <a href="/#privacy" id="footer-privacy">Privacy</a>
+      </div>
+    </footer>
+  </body>
+</html>

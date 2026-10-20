@@ -1,0 +1,109 @@
+/* FCC Covered List robot tracker page. Builds on the shared design system in style.css. */
+
+.tracker-main { padding: 120px 0 72px; }
+.tracker-page section { padding: 0; }
+.tiny { font-size: 0.78rem; margin: 12px 0 0; }
+
+.tracker-hero { max-width: 820px; margin-bottom: 32px; animation: tr-rise 0.8s var(--ease) both; }
+.tracker-hero h1 { font-size: clamp(2.3rem, 5vw, 3.8rem); margin-top: 16px; }
+
+/* Disclaimer: prominent, amber-tinted, near the top. */
+.disclaimer.card {
+  border-color: rgba(255, 181, 71, 0.35);
+  background: linear-gradient(140deg, rgba(255, 181, 71, 0.09), rgba(255, 122, 89, 0.03)), var(--panel);
+  padding: 22px 26px;
+  margin-bottom: 48px;
+  animation: tr-rise 0.8s 0.08s var(--ease) both;
+}
+.disclaimer-title { font-size: 1.05rem; color: var(--amber); margin-bottom: 8px; }
+.disclaimer.card p { margin: 0; color: var(--text); font-size: 0.95rem; max-width: 95ch; }
+.disclaimer a { color: var(--amber); text-decoration: underline; text-underline-offset: 3px; }
+.disclaimer-foot { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--line); }
+.disclaimer-foot p { max-width: 110ch; }
+
+.tracker-context { margin-bottom: 56px; max-width: 900px; }
+.tracker-context h2, .tracker-head h2, .tracker-correction h2 { font-size: clamp(1.5rem, 2.6vw, 2rem); }
+.context-list { margin: 0; padding-left: 1.2em; display: grid; gap: 10px; color: var(--muted); }
+.context-list b { color: var(--text); font-weight: 600; }
+.context-list li::marker { color: var(--teal); }
+
+.tracker-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.tracker-head p { margin: 0; font-size: 0.85rem; }
+
+/* Filters */
+.filters.card {
+  display: grid;
+  grid-template-columns: 2fr 1.2fr 1.2fr 1fr 1fr auto;
+  gap: 14px;
+  align-items: end;
+  padding: 18px;
+  margin-bottom: 24px;
+}
+.filter { display: grid; gap: 6px; min-width: 0; }
+.filter span { font: 600 0.7rem/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+.filter input, .filter select {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-hi);
+  background: rgba(5, 8, 13, 0.7);
+  color: var(--text);
+  font: 0.92rem var(--font);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.filter input:focus, .filter select:focus { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px rgba(42, 245, 210, 0.15); }
+.filter input::placeholder { color: var(--dim); }
+
+/* Entries */
+.tracker-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; }
+.entry { display: flex; flex-direction: column; gap: 14px; padding: 24px; animation: tr-rise 0.5s var(--ease) both; }
+.entry-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.entry-head h3 { margin: 0 0 4px; }
+.entry-cat { margin: 0; font-size: 0.78rem; color: var(--teal); letter-spacing: 0.04em; }
+.entry-tags { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+.entry-equipment { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.entry-equipment li {
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line-hi);
+  background: rgba(42, 245, 210, 0.05);
+  font: 0.8rem var(--mono);
+  color: var(--text);
+}
+.entry-conditions { margin: 0; font-size: 0.92rem; }
+.entry-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: auto 0 0; padding-top: 14px; border-top: 1px solid var(--line); }
+.entry-facts dt { font: 600 0.66rem/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); margin-bottom: 6px; }
+.entry-facts dd { margin: 0; font-size: 0.88rem; }
+.entry-sources { margin: 0; font-size: 0.86rem; }
+.entry-sources a::after { content: ' ↗'; font-size: 0.8em; }
+.empty { grid-column: 1 / -1; text-align: center; padding: 40px 0; }
+
+.tracker-legend { display: flex; flex-wrap: wrap; gap: 10px 28px; margin-top: 20px; }
+.tracker-legend .pill { margin-right: 6px; transform: scale(0.88); }
+
+.error-box { margin-top: 24px; padding: 16px 20px; border-radius: 12px; border: 1px solid rgba(255, 95, 109, 0.4); background: rgba(255, 95, 109, 0.08); color: #ffc7cc; font: 0.88rem var(--mono); }
+
+.tracker-correction.card { display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; padding: 26px 28px; margin-top: 56px; }
+.tracker-correction p { margin: 0; }
+
+.app-footer { margin-top: 0; border-top: 0; padding-top: 0; align-items: center; }
+.app-footer a { color: var(--muted); }
+
+@keyframes tr-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 960px) {
+  .filters.card { grid-template-columns: 1fr 1fr; }
+  .filter-search { grid-column: 1 / -1; }
+}
+@media (max-width: 560px) {
+  .tracker-main { padding-top: 100px; }
+  .filters.card { grid-template-columns: 1fr; }
+  .tracker-list { grid-template-columns: 1fr; }
+  .entry-facts { grid-template-columns: 1fr 1fr; }
+  .entry-head { flex-direction: column; }
+  .entry-tags { flex-direction: row; align-items: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tracker-hero, .disclaimer.card, .entry { animation: none; }
+}

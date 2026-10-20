@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "last_updated": "2026-10-20",
+  "covered_list_url": "https://www.fcc.gov/supplychain/coveredlist",
+  "designation": {
+    "notice_number": "DA 26-786",
+    "date": "2026-07-28",
+    "summary": "Foreign-produced advanced robotic devices were added to the FCC Covered List. New FCC equipment authorizations are blocked for covered equipment; existing authorizations and devices already in use are reported as unaffected.",
+    "verified_against_primary": false
+  },
+  "entries": [
+    {
+      "id": "husqvarna-automower-v-iq",
+      "manufacturer": "Husqvarna AB",
+      "equipment": ["Automower 305V iQ", "Automower 310V iQ", "Automower 420V iQ", "Automower 440V iQ"],
+      "category": "Robotic lawn mower",
+      "notice_number": "DA 26-957",
+      "date_announced": "2026-09-09",
+      "status": "Conditional approval",
+      "conditions_summary": "Reported as the first robotics conditional approval. Applies to the four named models only.",
+      "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-957A1.pdf",
+      "secondary_sources": [],
+      "verified_against_primary": false,
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "anscer-ar-amr",
+      "manufacturer": "ANSCER Robotics",
+      "equipment": ["AR250", "AR650", "AR1250"],
+      "category": "Autonomous mobile robot (AMR)",
+      "notice_number": "DA 26-996",
+      "date_announced": "2026-09-18",
+      "status": "Conditional approval",
+      "conditions_summary": "Reported as effective indefinitely, subject to continued compliance with the company's onshoring plan.",
+      "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-996A1.pdf",
+      "secondary_sources": [],
+      "verified_against_primary": false,
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "matic-floor-cleaner",
+      "manufacturer": "Matic Robots, Inc.",
+      "equipment": ["Robotic Floor Cleaner (model 4MA0001)", "Charging Dock (model 4DK0008)"],
+      "category": "Robotic floor cleaner",
+      "notice_number": "DA 26-1063",
+      "date_announced": "2026-10-02",
+      "status": "Conditional approval",
+      "conditions_summary": "Applies to the named floor cleaner and charging dock models.",
+      "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1063A1.pdf",
+      "secondary_sources": [],
+      "verified_against_primary": false,
+      "last_checked": "2026-10-20"
+    },
+    {
+      "id": "volley-agv-amr",
+      "manufacturer": "Volley Automation, Inc.",
+      "equipment": ["Automated guided vehicles (AGVs)", "Autonomous mobile robots (AMRs)"],
+      "category": "AGV / AMR",
+      "notice_number": "DA 26-1114",
+      "date_announced": "2026-10-16",
+      "status": "Conditional approval",
+      "conditions_summary": "Reported as tied to continued compliance with the company's onshoring plan. Some sources give 15 October as the date. Specific model numbers not yet confirmed.",
+      "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1114A1.pdf",
+      "secondary_sources": [],
+      "verified_against_primary": false,
+      "last_checked": "2026-10-20"
+    }
+  ]
+}
