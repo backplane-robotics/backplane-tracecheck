@@ -321,12 +321,43 @@ function findingEl(f) {
   return el;
 }
 
+/** Summary of what was readable in a file that ends before its MCAP footer. */
+function renderRecovered(rec) {
+  const box = $('result-recovered');
+  if (!rec) {
+    box.hidden = true;
+    box.replaceChildren();
+    return;
+  }
+  const pct = Number(rec.file_bytes) ? Math.floor((Number(rec.complete_bytes) / Number(rec.file_bytes)) * 1000) / 10 : 0;
+  const fact = (label, value) => h('div', {}, h('dt', { text: label }), h('dd', { class: 'mono', text: value }));
+  const topics = rec.topics || [];
+  box.replaceChildren(
+    h('h3', { text: 'Recovered before the cut-off' }),
+    h('p', { class: 'muted', text: rec.data_section_complete
+      ? 'All message data was read. The file is missing its summary or footer, which tools use to index the recording.'
+      : 'The file stops partway through its message data. These complete messages were readable before that point; anything recorded after it is not in this file.' }),
+    h('dl', { class: 'recovered-facts' },
+      fact('Messages', fmtNum(rec.messages)),
+      fact('Time span', rec.log_time_span_ns === null ? '—' : fmtNs(rec.log_time_span_ns)),
+      fact('Readable bytes', `${fmtBytes(Number(rec.complete_bytes))} of ${fmtBytes(Number(rec.file_bytes))} (${pct}%)`),
+      fact('Message data complete', rec.data_section_complete ? 'Yes' : 'No')),
+    topics.length
+      ? h('div', { class: 'table-wrap' }, h('table', { id: 'recovered-table' },
+          h('thead', {}, h('tr', {}, h('th', { text: 'Topic' }), h('th', { text: 'Messages recovered' }))),
+          h('tbody', {}, topics.map((t) => h('tr', {}, h('td', { class: 'mono', text: t.topic }), h('td', { class: 'mono', text: fmtNum(t.message_count) }))))))
+      : null,
+    h('p', { class: 'tiny muted', text: 'The contract checks were not run on this partial data. To find out why the file is incomplete, check the recorder’s logs and how the file was copied or uploaded.' }),
+  );
+  box.hidden = false;
+}
+
 function renderResults(r, seconds) {
   const sc = r.status_counts;
   const ring = $('overall-ring');
   ring.className = `overall-ring ${r.overall}`;
   $('overall-label').textContent = STATUS_TEXT[r.overall];
-  $('h-results').textContent = r.scan_complete ? `Contract review: ${STATUS_TEXT[r.overall].toLowerCase()}` : 'Scan incomplete';
+  $('h-results').textContent = r.scan_complete ? `Contract review: ${STATUS_TEXT[r.overall].toLowerCase()}` : r.recovered ? 'Recording incomplete' : 'Scan incomplete';
   $('result-file').textContent = `${r.source.name} · ${fmtBytes(r.source.bytes)}${r.source.sha256 ? ` · sha256 ${r.source.sha256.slice(0, 16)}…` : ''}`;
   $('result-file').title = r.source.sha256 || '';
   $('result-counts').replaceChildren(...['pass', 'warn', 'fail', 'skipped'].map((s) => h('span', { class: `count ${s}` }, h('b', { text: sc[s] }), ` ${s}`)));
@@ -343,6 +374,7 @@ function renderResults(r, seconds) {
     stat('CRC coverage', crcHeadline(cov), [cov.data_section ? `data-section CRC ${cov.data_section}` : '', cov.summary ? `summary ${cov.summary}` : ''].filter(Boolean).join(' · ')),
   );
   $('result-interpretation').textContent = `${r.interpretation} "Skipped" means no conclusion was drawn.`;
+  renderRecovered(r.recovered);
 
   $('result-checks').replaceChildren(
     ...r.checks.map((c, i) => {

@@ -126,6 +126,28 @@ describe('codecs and limits', () => {
     const r = await analyze(blobOf('truncated.mcap'), contractOf('demo-contract.json'));
     expect(r.scan_complete).toBe(false);
     expect(r.checks[0].status).toBe('fail');
+    expect(r.recovered.data_section_complete).toBe(true);
+  });
+  it('reports what was recovered from an interrupted recording', async () => {
+    const bytes = readFileSync(join(EX, 'fleet-zstd.mcap'));
+    const counts = [];
+    for (const pct of [30, 50, 70, 90]) {
+      const cut = new Blob([bytes.subarray(0, Math.floor((bytes.length * pct) / 100))]);
+      const r = await analyze(cut, contractOf('fleet-contract.json'));
+      expect(r.checks[0].findings[0].truncated).toBe(true);
+      expect(r.recovered.data_section_complete).toBe(false);
+      expect(r.recovered.topics.reduce((a, t) => a + t.message_count, 0)).toBe(r.recovered.messages);
+      expect(r.checks.slice(1).every((c) => c.status === 'skipped')).toBe(true);
+      counts.push(r.recovered.messages);
+    }
+    expect(counts).toEqual([...counts].sort((a, b) => a - b));
+    const html = render(await analyze(blobOf('interrupted-zstd.mcap'), contractOf('fleet-contract.json')));
+    expect(html).toContain('Recovered before the cut-off');
+  });
+  it('keeps the generic finding for files that are not MCAP', async () => {
+    const r = await analyze(blobOf('malformed.mcap'), contractOf('demo-contract.json'));
+    expect(r.recovered).toBeUndefined();
+    expect(r.checks[0].findings[0].detail).toContain('bad magic');
   });
   it('escapes HTML', () => {
     expect(esc(`<a href="x">'&`)).toBe('&lt;a href=&quot;x&quot;&gt;&#x27;&amp;');

@@ -82,6 +82,14 @@ class ScanTimeout(ScanError):
     """The configured wall-clock limit was reached."""
 
 
+class ScanTruncated(ScanError):
+    """The file ends before its MCAP structure is complete (for example, no footer).
+
+    A recording that stopped unexpectedly, a file cut off during copying, or a corrupted
+    record length all look like this; the file alone cannot tell them apart.
+    """
+
+
 # --------------------------------------------------------------------------- parsing
 
 
@@ -339,6 +347,10 @@ class ScanResult:
     unknown: int = 0
     stats: dict = field(default_factory=dict)
     fast_fallback: str | None = None
+    # Full scan only. Used to describe how much of a cut-off file was readable.
+    complete_bytes: int = 0  # end offset of the last complete top-level record
+    data_end_seen: bool = False
+    log_time_range: tuple[int, int] | None = None  # min and max log_time over all messages read
 
 
 class _Registry:
@@ -392,10 +404,10 @@ class _Source:
 
     def read(self, n: int) -> bytes:
         if n < 0 or n > self.size - self.pos:
-            raise ScanError("record extends beyond end of file")
+            raise ScanTruncated("record extends beyond end of file")
         data = self.f.read(n)
         if len(data) != n:
-            raise ScanError("unexpected end of file")
+            raise ScanTruncated("unexpected end of file")
         self.pos += n
         self.sha.update(data)
         self.crc = zlib.crc32(data, self.crc)
@@ -406,7 +418,7 @@ class _Source:
 
     def skip(self, n: int) -> None:
         if n < 0 or n > self.size - self.pos:
-            raise ScanError("record extends beyond end of file")
+            raise ScanTruncated("record extends beyond end of file")
         while n:
             step = min(n, 4 * MiB)
             self.read(step)
@@ -452,9 +464,10 @@ def scan_full(
     ended = False
     header_seen = False
     summary_crc_start = None
+    t_lo = t_hi = None
 
     def on_message(buf, body, end, a: int, b: int) -> None:
-        nonlocal tracked
+        nonlocal tracked, t_lo, t_hi
         if end - body < 22:
             raise ScanError("message record too short")
         cid, seq, log_t, pub_t = _MSG.unpack_from(buf, body)
@@ -464,6 +477,10 @@ def scan_full(
         stats["messages"] += 1
         if stats["messages"] > limits.max_messages:
             raise ScanError(f"message count exceeds {limits.max_messages}")
+        if t_lo is None or log_t < t_lo:
+            t_lo = log_t
+        if t_hi is None or log_t > t_hi:
+            t_hi = log_t
         if tr.cfg is None:
             tr.count += 1
             return
@@ -493,8 +510,9 @@ def scan_full(
         if src.read(8) != MAGIC:
             raise ScanError("not an MCAP file (bad magic)")
         while True:
+            r.complete_bytes = src.pos
             if size - src.pos < 9:
-                raise ScanError("unexpected end of file (missing footer)")
+                raise ScanTruncated("unexpected end of file (missing footer)")
             crc_before = src.crc
             offset = src.pos
             head = src.read(9)
@@ -557,6 +575,7 @@ def scan_full(
                 if ended:
                     raise ScanError("repeated DataEnd")
                 ended = True
+                r.data_end_seen = True
                 data_crc = c.u32()
                 if data_crc and data_crc != crc_before:
                     raise ScanError("data section CRC mismatch")
@@ -610,6 +629,7 @@ def scan_full(
         r.stats["seconds"] = round(time.monotonic() - started, 3)
         return r
     except (ScanError, ValueError, OverflowError, MemoryError, struct.error) as e:
+        r.log_time_range = None if t_lo is None else (t_lo, t_hi)
         if not isinstance(e, (ScanTimeout, MemoryError)):
             src.drain()
         r.sha256 = src.sha.hexdigest() if src.pos == size else None
@@ -655,7 +675,8 @@ def scan_fast(f: BinaryIO, size: int, limits: Limits | None = None) -> ScanResul
     footer_at = size - 8 - FOOTER_RECORD_SIZE
     tail = read_at(footer_at, FOOTER_RECORD_SIZE + 8)
     if tail[-8:] != MAGIC:
-        raise ScanError("missing trailing magic")
+        r.fast_fallback = "file does not end with the MCAP magic bytes (it may be incomplete)"
+        return r
     if tail[0] != OP_FOOTER or _U64.unpack_from(tail, 1)[0] != 20:
         r.fast_fallback = "footer is not at the standard position"
         return r

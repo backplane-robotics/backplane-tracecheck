@@ -41,6 +41,12 @@ export class ScanTimeout extends ScanError {
     return 'ScanTimeout';
   }
 }
+/** The file ends before its MCAP structure is complete. See ScanTruncated in reader.py. */
+export class ScanTruncated extends ScanError {
+  get name() {
+    return 'ScanTruncated';
+  }
+}
 
 const utf8 = new TextDecoder('utf-8', { fatal: true });
 const hex = (bytes) => bytesToHex(sha256(bytes));
@@ -276,7 +282,8 @@ function mapEquals(a, b) {
 
 function newResult(mode, size) {
   return { mode, size, sha256: null, profile: null, schemas: new Map(), channels: new Map(), metadata: [],
-    tracks: new Map(), counts: null, crc: {}, compression: {}, unknown: 0, stats: {}, fastFallback: null };
+    tracks: new Map(), counts: null, crc: {}, compression: {}, unknown: 0, stats: {}, fastFallback: null,
+    completeBytes: 0, dataEndSeen: false, logTimeRange: null };
 }
 
 class Registry {
@@ -336,13 +343,13 @@ class Source {
     return this.pos + n <= this.bufStart + this.buf.length;
   }
   async fill(n) {
-    if (n < 0 || n > this.size - this.pos) throw new ScanError('record extends beyond end of file');
+    if (n < 0 || n > this.size - this.pos) throw new ScanTruncated('record extends beyond end of file');
     const need = this.pos + n - this.loaded;
     if (need > 0) {
       const start = this.loaded;
       const end = Math.min(this.size, start + Math.max(8 * MiB, need));
       const bytes = new Uint8Array(await this.blob.slice(start, end).arrayBuffer());
-      if (bytes.length !== end - start) throw new ScanError('unexpected end of file');
+      if (bytes.length !== end - start) throw new ScanTruncated('unexpected end of file');
       this.sha.update(bytes);
       this.loaded = end;
       const tail = this.buf.subarray(this.pos - this.bufStart);
@@ -369,7 +376,7 @@ class Source {
     return this.take(n);
   }
   async skip(n) {
-    if (n < 0 || n > this.size - this.pos) throw new ScanError('record extends beyond end of file');
+    if (n < 0 || n > this.size - this.pos) throw new ScanTruncated('record extends beyond end of file');
     while (n > 0) {
       const step = Math.min(n, 4 * MiB);
       await this.read(step);
@@ -408,6 +415,8 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
   let ended = false;
   let headerSeen = false;
   let summaryCrcStart = null;
+  let tLo = null;
+  let tHi = null;
 
   const onMessage = (buf, dv, body, end, a, b) => {
     if (end - body < 22) throw new ScanError('message record too short');
@@ -415,13 +424,16 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
     const tr = tracks.get(cid);
     if (ended || tr === undefined) throw new ScanError('message after DataEnd or undefined channel');
     if (++stats.messages > limits.max_messages) throw new ScanError(`message count exceeds ${limits.max_messages}`);
+    const logT = dv.getBigUint64(body + 6, true);
+    if (tLo === null || logT < tLo) tLo = logT;
+    if (tHi === null || logT > tHi) tHi = logT;
     if (tr.cfg === null) {
       tr.count++;
       return;
     }
     if (tr.times && ++tracked > limits.max_tracked_messages)
       throw new ScanError(`gap-check timestamp storage exceeds ${limits.max_tracked_messages} messages; raise the max_tracked_messages limit`);
-    tr.add([stats.messages, a, b, dv.getBigUint64(body + 6, true), dv.getBigUint64(body + 14, true), dv.getUint32(body + 2, true)]);
+    tr.add([stats.messages, a, b, logT, dv.getBigUint64(body + 14, true), dv.getUint32(body + 2, true)]);
   };
   const onChannel = (c, loc) => {
     const cid = reg.channel(c, loc);
@@ -436,7 +448,8 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
   try {
     if (size < 8 || !same(await src.read(8), MAGIC)) throw new ScanError('not an MCAP file (bad magic)');
     for (;;) {
-      if (size - src.pos < 9) throw new ScanError('unexpected end of file (missing footer)');
+      r.completeBytes = src.pos;
+      if (size - src.pos < 9) throw new ScanTruncated('unexpected end of file (missing footer)');
       const crcBefore = src.crc;
       const offset = src.pos;
       const head = await src.read(9);
@@ -487,6 +500,7 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
       } else if (op === OP.DATA_END) {
         if (ended) throw new ScanError('repeated DataEnd');
         ended = true;
+        r.dataEndSeen = true;
         const dataCrc = c.u32();
         if (dataCrc && dataCrc !== crcBefore) throw new ScanError('data section CRC mismatch');
         r.crc.data_section = dataCrc ? 'verified' : 'absent';
@@ -533,6 +547,7 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
     r.stats.seconds = Math.round(performance.now() - started) / 1000;
     return r;
   } catch (e) {
+    r.logTimeRange = tLo === null ? null : [tLo, tHi];
     const err = e instanceof ScanError ? e : new ScanError(`${e && e.name}: ${e && e.message}`);
     const drained = !(e instanceof ScanTimeout) && !(e instanceof RangeError) && (await src.drain());
     r.sha256 = drained || src.loaded === size ? bytesToHex(src.sha.digest()) : null;
@@ -568,7 +583,10 @@ export async function scanFast(blob, limits = DEFAULT_LIMITS) {
 
   const footerAt = size - 8 - FOOTER_RECORD_SIZE;
   const tail = await readAt(footerAt, FOOTER_RECORD_SIZE + 8);
-  if (!same(tail.subarray(-8), MAGIC)) throw new ScanError('missing trailing magic');
+  if (!same(tail.subarray(-8), MAGIC)) {
+    r.fastFallback = 'file does not end with the MCAP magic bytes (it may be incomplete)';
+    return r;
+  }
   const tc = new Cursor(tail, 1);
   if (tail[0] !== OP.FOOTER || tc.u64() !== 20n) {
     r.fastFallback = 'footer is not at the standard position';

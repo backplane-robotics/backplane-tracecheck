@@ -99,5 +99,8 @@ def generate(dest):
     (dest/'malformed.mcap').write_bytes(b'not an MCAP recording\x00')
     (dest/'truncated.mcap').write_bytes((dest/'clean.mcap').read_bytes()[:-12])
     write_fleet_sample(dest/'fleet-zstd.mcap', seconds=20)
+    # Cut part-way through the message data, like a recorder that stopped mid-write: no summary, no footer.
+    fleet = (dest/'fleet-zstd.mcap').read_bytes()
+    (dest/'interrupted-zstd.mcap').write_bytes(fleet[:len(fleet) * 55 // 100])
     write_fleet_sample(dest/'fleet-dropout-lz4.mcap', seconds=20, compression=CompressionType.LZ4,
                        dropout=('/scan', 8, 9.5))

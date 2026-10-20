@@ -171,6 +171,15 @@ select {
 
 .inventory { margin-top: 20px; }
 .inventory h3 { font-size: 1.1rem; }
+
+/* Recovered data for a recording that ends before its footer. */
+.recovered { margin: 0 0 20px; border-color: rgba(255, 181, 71, 0.35); background: linear-gradient(140deg, rgba(255, 181, 71, 0.07), transparent 60%), var(--panel); }
+.recovered h3 { font-size: 1.1rem; color: var(--amber); }
+.recovered-facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+.recovered-facts dt { font: 600 0.68rem/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); margin-bottom: 6px; }
+.recovered-facts dd { margin: 0; font-size: 0.95rem; }
+.recovered .tiny { font-size: 0.8rem; margin: 14px 0 0; }
+@media (max-width: 720px) { .recovered-facts { grid-template-columns: 1fr 1fr; } }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
 th { text-align: left; font: 600 0.7rem var(--mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--dim); padding: 10px 12px; border-bottom: 1px solid var(--line-hi); }

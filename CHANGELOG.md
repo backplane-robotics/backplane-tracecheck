@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Incomplete recordings.** A file that ends before its MCAP footer (for example, a recorder that stopped mid-write, or a file cut off while copying) now gets a specific C01 finding and a `recovered` report section: readable bytes, complete messages, log-time span, per-topic counts, and whether all message data was read. The other checks stay skipped; they are not evaluated on partial data. Shown in the CLI summary, the web app and the HTML report.
+- `interrupted-zstd.mcap` synthetic example and web demo.
+- FCC Covered List robot tracker page on the website (`/tools/covered-list-robots/`).
+
+### Changed
+- Fast mode falls back to a full scan when the file doesn't end with the MCAP magic bytes, so incomplete files get the recovered summary.
+- Web demo list: the interrupted fleet recording replaces the small truncated demo; the dropout demo is correctly described as a lidar (`/scan`) outage.
+
 ## [0.2.0] - 2026-10-14
 
 ### Added

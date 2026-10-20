@@ -20,6 +20,7 @@ from .reader import (
     TEXT_LIMIT,
     Limits,
     ScanError,
+    ScanTruncated,
     TrackConfig,
     scan_fast,
     scan_full,
@@ -39,6 +40,9 @@ NAMES = [
     "Expected interval coverage",
 ]
 FULL_SCAN_ONLY = "Fast mode reads only the summary section; this check needs a full scan."
+INCOMPLETE = "Scan incomplete; no completeness or timing conclusion."
+TRUNCATED_SKIP = ("Recording is incomplete, so this check was not evaluated on the partial data. "
+                  "See the recovered summary.")  # fmt: skip
 
 __all__ = ["Limits", "ScanError", "analyze_bytes", "analyze_file", "analyze_stream", "NAMES", "REPORT_VERSION"]
 
@@ -158,9 +162,14 @@ def analyze_stream(
         if partial is not None:
             result["source"]["sha256"] = partial.sha256
         result["scan_complete"] = False
+        if isinstance(e, ScanTruncated) and partial is not None and partial.mode == "full":
+            _report_truncated(result, partial, str(e), finding)
+            for i in range(2, 11):
+                finding(i, "skipped", TRUNCATED_SKIP)
+            return finish(result)
         finding(1, "fail", f"{type(e).__name__}: {str(e)[:300]}")
         for i in range(2, 11):
-            finding(i, "skipped", "Scan incomplete; no completeness or timing conclusion.")
+            finding(i, "skipped", INCOMPLETE)
         return finish(result)
 
     schemas, channels, metadata = r.schemas, r.channels, r.metadata
@@ -284,6 +293,37 @@ def analyze_stream(
             else:
                 finding(10, "skipped", "No expected interval configured.", **ctx)
     return finish(result)
+
+
+def _report_truncated(result: dict, r, reason: str, finding: Callable) -> None:
+    """Describe a file that ends before its MCAP structure is complete, and what was readable.
+
+    Only complete records count: a chunk cut off part-way contributes no messages.
+    """
+    lo_hi = r.log_time_range
+    messages = r.stats.get("messages", 0)
+    result["recovered"] = {
+        "complete_bytes": r.complete_bytes,
+        "file_bytes": r.size,
+        "data_section_complete": r.data_end_seen,
+        "messages": messages,
+        "log_time_first": lo_hi[0] if lo_hi else None,
+        "log_time_last": lo_hi[1] if lo_hi else None,
+        "log_time_span_ns": lo_hi[1] - lo_hi[0] if lo_hi else None,
+        "topics": [{"channel_id": cid, "topic": ch["value"]["topic"],
+                    "message_count": r.tracks[cid].count if cid in r.tracks else 0}
+                   for cid, ch in r.channels.items()],
+    }  # fmt: skip
+    if r.data_end_seen:
+        where = "All message data was read; the file ends in its summary or footer."
+    else:
+        where = "The file ends inside its message data, so later messages, if any, are missing."
+    finding(1, "fail",
+            f"Recording is incomplete: the file ends before its MCAP footer ({reason[:120]}). {where} "
+            f"{messages} complete messages were readable in the first {r.complete_bytes} of {r.size} bytes. "
+            "A recording that stopped unexpectedly, or a file cut off while copying, looks like this; the file "
+            "alone cannot show which.",
+            truncated=True)  # fmt: skip
 
 
 def analyze_file(path: str | os.PathLike, contract: dict, filename: str | None = None, **kwargs) -> dict:

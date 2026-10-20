@@ -118,6 +118,10 @@ def main(argv: list[str] | None = None) -> int:
         (args.out / "report.json").write_text(json.dumps(r, indent=2, ensure_ascii=False), encoding="utf-8")
         (args.out / "report.html").write_text(render(r), encoding="utf-8")
         note = f" | fast mode fell back to full scan: {r['fast_mode_fallback']}" if "fast_mode_fallback" in r else ""
+        if "recovered" in r:
+            rec = r["recovered"]
+            span = "" if rec["log_time_span_ns"] is None else f" over {rec['log_time_span_ns'] / 1e9:.3f} s"
+            note += f" | recording incomplete: {rec['messages']} messages recovered{span}"
         print(f"{r['overall'].upper()} | mode={r['scan_mode']} | scan_complete={r['scan_complete']} | "
               f"{r['status_counts']} | reports: {args.out}{note}")  # fmt: skip
         failing = {"warn": ("skipped", "warn", "fail"), "fail": ("fail",)}[args.fail_on]

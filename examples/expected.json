@@ -255,6 +255,43 @@
         "C09": "skipped",
         "C10": "skipped"
       }
+    },
+    {
+      "file": "interrupted-zstd.mcap",
+      "contract": "fleet-contract.json",
+      "overall": "fail",
+      "scan_complete": false,
+      "checks": {
+        "C01": "fail",
+        "C02": "skipped",
+        "C03": "skipped",
+        "C04": "skipped",
+        "C05": "skipped",
+        "C06": "skipped",
+        "C07": "skipped",
+        "C08": "skipped",
+        "C09": "skipped",
+        "C10": "skipped"
+      }
+    },
+    {
+      "file": "interrupted-zstd.mcap",
+      "contract": "fleet-contract.json",
+      "fast": true,
+      "overall": "fail",
+      "scan_complete": false,
+      "checks": {
+        "C01": "fail",
+        "C02": "skipped",
+        "C03": "skipped",
+        "C04": "skipped",
+        "C05": "skipped",
+        "C06": "skipped",
+        "C07": "skipped",
+        "C08": "skipped",
+        "C09": "skipped",
+        "C10": "skipped"
+      }
     }
   ]
 }

@@ -5,7 +5,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { num, validate } from './contract.js';
 import { PyFloat, dumps } from './json.js';
-import { DEFAULT_LIMITS, META_PAIRS_LIMIT, META_VALUE_LIMIT, TEXT_LIMIT, scanFast, scanFull } from './reader.js';
+import { DEFAULT_LIMITS, META_PAIRS_LIMIT, META_VALUE_LIMIT, ScanTruncated, TEXT_LIMIT, scanFast, scanFull } from './reader.js';
 
 export const VERSION = '0.2.0';
 export const REPORT_VERSION = 2;
@@ -22,6 +22,8 @@ export const NAMES = [
   'Expected interval coverage',
 ];
 const FULL_SCAN_ONLY = 'Fast mode reads only the summary section; this check needs a full scan.';
+const INCOMPLETE = 'Scan incomplete; no completeness or timing conclusion.';
+const TRUNCATED_SKIP = 'Recording is incomplete, so this check was not evaluated on the partial data. See the recovered summary.';
 const PRIORITY = { skipped: 0, pass: 1, warn: 2, fail: 3 };
 const get = (m, k, d) => (m.has(k) ? m.get(k) : d);
 
@@ -114,8 +116,13 @@ export async function analyze(blob, contract, { filename = 'recording.mcap', fas
   } catch (e) {
     if (e && e.result) result.source.sha256 = e.result.sha256;
     result.scan_complete = false;
+    if (e instanceof ScanTruncated && e.result && e.result.mode === 'full') {
+      reportTruncated(result, e.result, String(e.message), finding);
+      for (let i = 2; i <= 10; i++) finding(i, 'skipped', TRUNCATED_SKIP);
+      return finish(result);
+    }
     finding(1, 'fail', `${(e && e.name) || 'Error'}: ${String(e && e.message).slice(0, 300)}`);
-    for (let i = 2; i <= 10; i++) finding(i, 'skipped', 'Scan incomplete; no completeness or timing conclusion.');
+    for (let i = 2; i <= 10; i++) finding(i, 'skipped', INCOMPLETE);
     return finish(result);
   }
 
@@ -216,6 +223,30 @@ export async function analyze(blob, contract, { filename = 'recording.mcap', fas
     }
   }
   return finish(result);
+}
+
+/** Describe a file that ends before its MCAP structure is complete. Mirrors _report_truncated in engine.py. */
+function reportTruncated(result, r, reason, finding) {
+  const range = r.logTimeRange;
+  const messages = r.stats.messages || 0;
+  result.recovered = {
+    complete_bytes: r.completeBytes,
+    file_bytes: r.size,
+    data_section_complete: r.dataEndSeen,
+    messages,
+    log_time_first: range ? range[0] : null,
+    log_time_last: range ? range[1] : null,
+    log_time_span_ns: range ? range[1] - range[0] : null,
+    topics: [...r.channels].map(([cid, ch]) => ({ channel_id: cid, topic: ch.value.topic, message_count: r.tracks.get(cid)?.count || 0 })),
+  };
+  const where = r.dataEndSeen
+    ? 'All message data was read; the file ends in its summary or footer.'
+    : 'The file ends inside its message data, so later messages, if any, are missing.';
+  finding(1, 'fail',
+    `Recording is incomplete: the file ends before its MCAP footer (${reason.slice(0, 120)}). ${where} ` +
+      `${messages} complete messages were readable in the first ${r.completeBytes} of ${r.size} bytes. ` +
+      'A recording that stopped unexpectedly, or a file cut off while copying, looks like this; the file alone cannot show which.',
+    null, { truncated: true });
 }
 
 export function finish(result) {
