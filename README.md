@@ -56,6 +56,20 @@ tracecheck serve --open
 - `1`: contract failures, warnings or an incomplete scan (all recorded in the report).
 - `2`: configuration, input or operational error, including a bag folder that can't be checked (for example, sqlite3 storage or rosbag2 file compression). No report is written.
 
+## Check a copy after transfer
+
+Write a manifest where the recording was made, then check the copy after upload, sync or archiving:
+
+```bash
+tracecheck manifest examples/fleet-bag --out fleet-bag.manifest.json
+# ...copy the folder and the manifest somewhere else...
+tracecheck verify /mnt/archive/fleet-bag --manifest fleet-bag.manifest.json
+```
+
+The manifest is JSON. It holds each file's size and SHA-256 (for a bag folder, every file in the folder, including `metadata.yaml`), plus the message count per topic. `verify` reports each file as `MATCH`, `CHANGED`, `MISSING` or `EXTRA`, and compares the topic counts. Exit `0` means every file matches, `1` means something differs, `2` means an error such as an invalid manifest. `--json FILE` also writes the result as JSON. Output files are never overwritten.
+
+A matching SHA-256 shows that the copy has the same bytes as the files the manifest was written from. It does not show who made the recording, when, or that its contents are true. The manifest is not signed, so keep it somewhere the copy's handlers can't change it.
+
 ## In the browser
 
 [backplanerobotics.com/tracecheck](https://backplanerobotics.com/tracecheck/) runs the same checks in a Web Worker, using a JavaScript port of the engine in [`web/src/engine/`](https://github.com/backplane-robotics/backplane-tracecheck/tree/main/web/src/engine).
