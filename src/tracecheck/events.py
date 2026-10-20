@@ -160,3 +160,27 @@ def explainer(wins: tuple[list, dict], topic: str, limit: int) -> Callable[[int,
         return sorted(labels) if widest <= limit else None
 
     return explain
+
+
+def covered(wins: tuple[list, dict], topic: str, a: int, b: int) -> tuple[int, list]:
+    """Nanoseconds of ``[a, b]`` inside pause windows or ``topic``'s unsubscribed windows, and their labels.
+
+    Overlapping windows are counted once. Used by C06 to leave recorded pauses out of the average rate.
+    """
+    pause, topics = wins
+    spans = [(s, e, LABEL_PAUSE) for s, e in pause] + [(s, e, LABEL_TOPIC) for s, e in topics.get(topic, [])]
+    clipped = []
+    for s, e, label in spans:
+        lo = max(s, a)
+        hi = b if e is None else min(e, b)
+        if lo < hi:
+            clipped.append((lo, hi, label))
+    clipped.sort()
+    total, cursor, labels = 0, a, set()
+    for lo, hi, label in clipped:
+        lo = max(lo, cursor)
+        if hi > lo:
+            total += hi - lo
+            cursor = hi
+        labels.add(label)
+    return total, sorted(labels)

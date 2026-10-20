@@ -363,7 +363,7 @@ $('cancel-btn').addEventListener('click', () => {
 // ---------- results ----------
 const STATUS_TEXT = { pass: 'Pass', warn: 'Warn', fail: 'Fail', skipped: 'Skipped' };
 const pill = (s) => h('span', { class: `pill ${s}`, text: s });
-const FACT_KEYS = ['file', 'topic', 'channel_id', 'scope', 'claimed', 'observed', 'expected', 'observed_hz', 'minimum', 'maximum', 'time_basis', 'expected_interval_ns',
+const FACT_KEYS = ['file', 'topic', 'channel_id', 'scope', 'claimed', 'observed', 'expected', 'observed_hz', 'active_hz', 'excluded_ns', 'excluded_by', 'minimum', 'maximum', 'time_basis', 'expected_interval_ns',
   'boundary_tolerance_ns', 'missing_crc_policy', 'crc_coverage_complete', 'unknown_records_skipped', 'explained_gap_count', 'files_scanned',
   'metadata', 'ros_distro', 'files_listed'];
 const EXPLAINED_LABELS = { recorder_paused: 'recorder paused', topic_unsubscribed: 'topic unsubscribed by recorder' };
@@ -393,7 +393,7 @@ function evidenceLine(ev, explained = false) {
 
 function findingEl(f) {
   const facts = FACT_KEYS.filter((k) => k in f).map((k) =>
-    h('span', { class: 'fact' }, h('i', { text: k.replace(/_/g, ' ') }), h('b', { text: Array.isArray(f[k]) ? `[${f[k].map(fmtNum).join(', ')}]` : f[k] === null ? 'null' : fmtNum(f[k]) })));
+    h('span', { class: 'fact' }, h('i', { text: k.replace(/_/g, ' ') }), h('b', { text: k === 'excluded_by' ? f[k].map((x) => EXPLAINED_LABELS[x] || x).join(', ') : k === 'excluded_ns' ? fmtNs(f[k]) : Array.isArray(f[k]) ? `[${f[k].map(fmtNum).join(', ')}]` : f[k] === null ? 'null' : fmtNum(f[k]) })));
   const el = h('div', { class: `finding ${f.status}` }, h('div', { class: 'finding-head' }, pill(f.status), h('p', { text: f.detail })));
   if (facts.length) el.append(h('div', { class: 'facts' }, facts));
   if (Array.isArray(f.evidence) && f.evidence.length) {

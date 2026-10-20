@@ -138,6 +138,30 @@ class EngineTests(unittest.TestCase):
         r = analyze_bytes(self.paused, FLEET_CONTRACT, fast=True)
         self.assertNotIn("recorder_events", r)
 
+    def test_rate_leaves_out_recorded_pauses(self):
+        # /imu is 200 Hz with a 1 s pause in 30 s: about 193 Hz over the whole span, 200 Hz while recording.
+        c = copy.deepcopy(FLEET_CONTRACT)
+        c["topics"]["/imu"]["min_rate_hz"] = 198
+        f = {x["topic"]: x for x in analyze_bytes(self.paused, c)["checks"][5]["findings"]}
+        imu = f["/imu"]
+        self.assertEqual(imu["status"], "pass")
+        self.assertLess(imu["observed_hz"], 198)
+        self.assertAlmostEqual(imu["active_hz"], 200, delta=1)
+        self.assertEqual((imu["excluded_ns"], imu["excluded_by"]), (1_000_000_000, ["recorder_paused"]))
+        self.assertIn("not verified", imu["detail"])
+        self.assertEqual(f[CAMERA]["excluded_by"], ["recorder_paused", "topic_unsubscribed"])
+        self.assertEqual(f[CAMERA]["excluded_ns"], 1_800_000_000)
+
+    def test_rate_without_events_includes_the_pause(self):
+        c = copy.deepcopy(FLEET_CONTRACT)
+        c["topics"]["/imu"]["min_rate_hz"] = 198
+        f = analyze_bytes(_without_event_channels(self.paused), c)["checks"][5]["findings"]
+        imu = next(x for x in f if x["topic"] == "/imu")
+        self.assertEqual(imu["status"], "fail")
+        self.assertNotIn("active_hz", imu)
+        plain = analyze_bytes(self.plain, FLEET_CONTRACT)["checks"][5]["findings"]
+        self.assertTrue(all("active_hz" not in x for x in plain))
+
     def test_undecodable_event_is_counted_not_used(self):
         r = analyze_bytes(_with_junk_pause(), _tiny_contract())
         self.assertEqual(r["recorder_events"]["undecodable"], 1)

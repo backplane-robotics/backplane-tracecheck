@@ -201,6 +201,16 @@ describe('recorder events', () => {
     expect(cam.explained_gaps.map((g) => g.explained_by)).toEqual([['recorder_paused'], ['topic_unsubscribed']]);
     expect(render(r)).toContain('explained_gaps');
   });
+  it('leaves recorded pauses out of the average rate', async () => {
+    const c = contractOf('fleet-contract.json');
+    c.get('topics').get('/imu').set('min_rate_hz', 198n);
+    const r = await analyze(blobOf('fleet-paused-zstd.mcap'), c);
+    const imu = r.checks[5].findings.find((f) => f.topic === '/imu');
+    expect(imu.status).toBe('pass');
+    expect(imu.observed_hz.v).toBeLessThan(198);
+    expect(imu.active_hz.v).toBeGreaterThan(199);
+    expect([imu.excluded_ns, imu.excluded_by]).toEqual([1000000000n, ['recorder_paused']]);
+  });
 });
 
 describe('ROS 2 bag folders', () => {

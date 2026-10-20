@@ -131,3 +131,28 @@ export function explainer(wins, topic, limit) {
     return widest <= limit ? [...labels].sort() : null;
   };
 }
+
+/** [ns of [a, b] inside pause or `topic` unsubscribed windows, sorted labels]. Mirrors events.covered. */
+export function covered(wins, topic, a, b) {
+  const [pause, topics] = wins;
+  const spans = [...pause.map(([s, e]) => [s, e, LABEL_PAUSE]), ...(topics.get(topic) || []).map(([s, e]) => [s, e, LABEL_TOPIC])];
+  const clipped = [];
+  for (const [s, e, label] of spans) {
+    const lo = s > a ? s : a;
+    const hi = e === null ? b : e < b ? e : b;
+    if (lo < hi) clipped.push([lo, hi, label]);
+  }
+  clipped.sort((x, y) => cmp(x[0], y[0]) || cmp(x[1], y[1]) || cmp(x[2], y[2]));
+  let total = 0n;
+  let cursor = a;
+  const labels = new Set();
+  for (const [s, hi, label] of clipped) {
+    const lo = s > cursor ? s : cursor;
+    if (hi > lo) {
+      total += hi - lo;
+      cursor = hi;
+    }
+    labels.add(label);
+  }
+  return [total, [...labels].sort()];
+}

@@ -5,7 +5,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { META_LIMIT, META_NAME, plan as bagPlan } from './bag.js';
 import { num, validate } from './contract.js';
-import { EVENT_LIMIT, explainer, windows } from './events.js';
+import { EVENT_LIMIT, covered, explainer, windows } from './events.js';
 import { PyFloat, dumps } from './json.js';
 import { BagContext, DEFAULT_LIMITS, META_PAIRS_LIMIT, META_VALUE_LIMIT, ScanTruncated, TEXT_LIMIT, scanFast, scanFull } from './reader.js';
 
@@ -29,6 +29,9 @@ const INCOMPLETE = 'Scan incomplete; no completeness or timing conclusion.';
 const TRUNCATED_SKIP = 'Recording is incomplete, so this check was not evaluated on the partial data. See the recovered summary.';
 const BAG_MISSING_SKIP = 'A file listed in metadata.yaml is not in the folder, so this check was not evaluated on the partial recording. See C11.';
 const GAP_DETAIL = 'Adjacent sorted timestamps; only interior gaps. Equal-to-threshold passes.';
+const RATE_DETAIL = '(N-1) / (max timestamp - min timestamp), in seconds; not instantaneous rate.';
+const RATE_EVENTS_DETAIL = RATE_DETAIL + ' Judged on active_hz: time covered by recorder pause or unsubscribe events written ' +
+  'in the recording (excluded_ns) is left out; the events are not verified. observed_hz includes that time.';
 const GAP_EVENTS_DETAIL = GAP_DETAIL + ' Gaps covered by a recorder pause or unsubscribe event written in the recording ' +
   'are listed as explained and do not fail; the events are not verified.';
 const GAP_EVENTS_UNUSED = GAP_DETAIL + ' Recorder events in this recording were not used: they are matched on log_time only.';
@@ -240,9 +243,16 @@ function evaluate(result, c, r, finding, firstFile = null) {
       const { lo, hi } = tr;
       if ((t.has('min_rate_hz') || t.has('max_rate_hz')) && n >= 2 && hi[k] > lo[k]) {
         const rate = ((n - 1) * 1e9) / Number(hi[k] - lo[k]);
-        const ok = num(get(t, 'min_rate_hz', 0n)) <= rate && rate <= num(get(t, 'max_rate_hz', Infinity));
-        finding(6, ok ? 'pass' : 'fail', '(N-1) / (max timestamp - min timestamp), in seconds; not instantaneous rate.',
-          [msg(cid, lo), msg(cid, hi)], { observed_hz: new PyFloat(rate), time_basis: basis, ...ctx });
+        const [gone, why] = wins !== null && basis === 'log_time' ? covered(wins, topic, lo[k], hi[k]) : [0n, []];
+        let judged = rate;
+        let extra = {};
+        if (gone > 0n && hi[k] - lo[k] > gone) {
+          judged = ((n - 1) * 1e9) / Number(hi[k] - lo[k] - gone);
+          extra = { active_hz: new PyFloat(judged), excluded_ns: gone, excluded_by: why };
+        }
+        const ok = num(get(t, 'min_rate_hz', 0n)) <= judged && judged <= num(get(t, 'max_rate_hz', Infinity));
+        finding(6, ok ? 'pass' : 'fail', 'active_hz' in extra ? RATE_EVENTS_DETAIL : RATE_DETAIL,
+          [msg(cid, lo), msg(cid, hi)], { observed_hz: new PyFloat(rate), time_basis: basis, ...ctx, ...extra });
       } else finding(6, 'skipped', 'Rate bounds absent, fewer than two messages, or zero timestamp span.', null, ctx);
       if (t.has('max_gap_ns') && n >= 2) {
         const explain = wins !== null && basis === 'log_time' ? explainer(wins, topic, t.get('max_gap_ns')) : null;

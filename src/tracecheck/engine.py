@@ -51,6 +51,10 @@ TRUNCATED_SKIP = ("Recording is incomplete, so this check was not evaluated on t
 BAG_MISSING_SKIP = ("A file listed in metadata.yaml is not in the folder, so this check was not evaluated on the "
                     "partial recording. See C11.")  # fmt: skip
 GAP_DETAIL = "Adjacent sorted timestamps; only interior gaps. Equal-to-threshold passes."
+RATE_DETAIL = "(N-1) / (max timestamp - min timestamp), in seconds; not instantaneous rate."
+RATE_EVENTS_DETAIL = (RATE_DETAIL + " Judged on active_hz: time covered by recorder pause or unsubscribe events written "
+                      "in the recording (excluded_ns) is left out; the events are not verified. observed_hz includes "
+                      "that time.")  # fmt: skip
 GAP_EVENTS_DETAIL = (GAP_DETAIL + " Gaps covered by a recorder pause or unsubscribe event written in the recording "
                      "are listed as explained and do not fail; the events are not verified.")  # fmt: skip
 GAP_EVENTS_UNUSED = (GAP_DETAIL + " Recorder events in this recording were not used: they are matched on "
@@ -307,10 +311,17 @@ def _evaluate(result: dict, c: dict, r: ScanResult, finding: Callable, first_fil
             lo, hi = tr.lo, tr.hi
             if ("min_rate_hz" in t or "max_rate_hz" in t) and n >= 2 and hi[k] > lo[k]:
                 rate = (n - 1) * 1e9 / (hi[k] - lo[k])
-                ok = t.get("min_rate_hz", 0) <= rate <= t.get("max_rate_hz", float("inf"))
-                finding(6, "pass" if ok else "fail",
-                        "(N-1) / (max timestamp - min timestamp), in seconds; not instantaneous rate.",
-                        [_msg(cid, lo), _msg(cid, hi)], observed_hz=rate, time_basis=basis, **ctx)  # fmt: skip
+                gone, why = (0, [])
+                if wins is not None and basis == "log_time":
+                    gone, why = rec_events.covered(wins, topic, lo[k], hi[k])
+                extra = {}
+                judged = rate
+                if gone and hi[k] - lo[k] > gone:
+                    judged = (n - 1) * 1e9 / (hi[k] - lo[k] - gone)
+                    extra = {"active_hz": judged, "excluded_ns": gone, "excluded_by": why}
+                ok = t.get("min_rate_hz", 0) <= judged <= t.get("max_rate_hz", float("inf"))
+                finding(6, "pass" if ok else "fail", RATE_EVENTS_DETAIL if extra else RATE_DETAIL,
+                        [_msg(cid, lo), _msg(cid, hi)], observed_hz=rate, time_basis=basis, **ctx, **extra)  # fmt: skip
             else:
                 finding(6, "skipped", "Rate bounds absent, fewer than two messages, or zero timestamp span.", **ctx)
             if "max_gap_ns" in t and n >= 2:

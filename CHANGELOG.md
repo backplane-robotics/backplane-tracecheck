@@ -18,7 +18,8 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 - Fast mode falls back to a full scan when the file doesn't end with the MCAP magic bytes, so incomplete files get the recovered summary.
 - Web demo list: the interrupted fleet recording replaces the small truncated demo; the dropout demo is correctly described as a lidar (`/scan`) outage.
-- Tracecheck page Pro note: "folder-based processing" now reads "checking many recordings at once", since checking one bag folder is free.
+- Tracecheck page and landing page Pro note: "folder-based processing" now reads "checking many recordings at once", since checking one bag folder is free.
+- **C06 average rate leaves out recorded pauses.** When a recording contains dynrec pause or unsubscribe events, the rate bounds are applied to `active_hz`, which leaves out the time those events cover. The finding also reports `observed_hz` (whole span, as before), `excluded_ns` and `excluded_by`. Recordings without such events are unchanged.
 
 ## [0.2.0] - 2026-10-14
 
