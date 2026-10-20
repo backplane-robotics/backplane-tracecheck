@@ -21,6 +21,8 @@ CASES = [(f"{n}.mcap", "demo-contract.json", False) for n in DEMO] + [
     ("fleet-dropout-lz4.mcap", "fleet-contract.json", False),
     ("interrupted-zstd.mcap", "fleet-contract.json", False),
     ("interrupted-zstd.mcap", "fleet-contract.json", True),
+    ("fleet-paused-zstd.mcap", "fleet-contract.json", False),
+    ("fleet-paused-zstd.mcap", "fleet-contract.json", True),
 ]
 
 

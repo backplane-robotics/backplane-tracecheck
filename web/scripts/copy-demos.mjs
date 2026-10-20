@@ -16,6 +16,7 @@ const DEMOS = [
   { file: 'fleet-zstd.mcap', contract: 'fleet-contract.json', title: 'Mobile robot (zstd)', note: '4 ROS 2 topics, 20 s at fleet rates.' },
   { file: 'fleet-dropout-lz4.mcap', contract: 'fleet-contract.json', title: 'Sensor dropout (lz4)', note: 'A lidar (/scan) outage hidden in a 20 s drive.' },
   { file: 'interrupted-zstd.mcap', contract: 'fleet-contract.json', title: 'Interrupted recording', note: 'Stops mid-write: shows what was recovered.' },
+  { file: 'fleet-paused-zstd.mcap', contract: 'fleet-contract.json', title: 'Paused recording (dynrec)', note: 'Gaps explained by the recorder’s own pause and topic events.' },
 ];
 
 mkdirSync(dest, { recursive: true });

@@ -4,6 +4,7 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { num, validate } from './contract.js';
+import { EVENT_LIMIT, explainer, windows } from './events.js';
 import { PyFloat, dumps } from './json.js';
 import { DEFAULT_LIMITS, META_PAIRS_LIMIT, META_VALUE_LIMIT, ScanTruncated, TEXT_LIMIT, scanFast, scanFull } from './reader.js';
 
@@ -24,6 +25,13 @@ export const NAMES = [
 const FULL_SCAN_ONLY = 'Fast mode reads only the summary section; this check needs a full scan.';
 const INCOMPLETE = 'Scan incomplete; no completeness or timing conclusion.';
 const TRUNCATED_SKIP = 'Recording is incomplete, so this check was not evaluated on the partial data. See the recovered summary.';
+const GAP_DETAIL = 'Adjacent sorted timestamps; only interior gaps. Equal-to-threshold passes.';
+const GAP_EVENTS_DETAIL = GAP_DETAIL + ' Gaps covered by a recorder pause or unsubscribe event written in the recording ' +
+  'are listed as explained and do not fail; the events are not verified.';
+const GAP_EVENTS_UNUSED = GAP_DETAIL + ' Recorder events in this recording were not used: they are matched on log_time only.';
+const GAP_EVENTS_LIMIT = GAP_DETAIL + ` Recorder events in this recording were not used: more than ${EVENT_LIMIT} pause or subscription events.`;
+const PROVENANCE_EVENTS = 'Local read-only scan in this browser; the file never left this device. User-supplied contract; no execution. ' +
+  'Payloads are not decoded, except recognised recorder event messages (action and topic name only).';
 const PRIORITY = { skipped: 0, pass: 1, warn: 2, fail: 3 };
 const get = (m, k, d) => (m.has(k) ? m.get(k) : d);
 
@@ -99,6 +107,10 @@ export async function analyze(blob, contract, { filename = 'recording.mcap', fas
     const crc = r.crc;
     Object.assign(result, { scan_complete: true, mcap_profile: r.profile, checksum_coverage: crc, compression: r.compression,
       scan_stats: { ...r.stats, seconds: new PyFloat(r.stats.seconds) } });
+    if (r.recorderEvents) {
+      result.recorder_events = r.recorderEvents;
+      result.provenance = PROVENANCE_EVENTS;
+    }
     const policy = ignoreCrc ? 'ignore' : 'warn';
     if (r.mode === 'full') {
       const missing = crc.data_section === 'absent' && (crc.chunk_absent > 0 || r.stats.unchunked_messages > 0);
@@ -127,6 +139,8 @@ export async function analyze(blob, contract, { filename = 'recording.mcap', fas
   }
 
   const { schemas, channels, metadata } = r;
+  const info = r.recorderEvents || null;
+  const wins = info !== null && !info.limit_reached ? windows(r.events) : null;
   const countOf = (cid) => (r.counts ? r.counts.get(cid) || 0 : r.tracks.get(cid)?.count || 0);
   result.inventory = [...channels].map(([cid, x]) => ({
     channel_id: cid, topic: x.value.topic, message_count: countOf(cid), message_encoding: x.value.message_encoding,
@@ -196,15 +210,22 @@ export async function analyze(blob, contract, { filename = 'recording.mcap', fas
           [msg(cid, lo), msg(cid, hi)], { observed_hz: new PyFloat(rate), time_basis: basis, ...ctx });
       } else finding(6, 'skipped', 'Rate bounds absent, fewer than two messages, or zero timestamp span.', null, ctx);
       if (t.has('max_gap_ns') && n >= 2) {
-        const [sample, total] = tr.sortedGaps();
+        const explain = wins !== null && basis === 'log_time' ? explainer(wins, topic, t.get('max_gap_ns')) : null;
+        const [sample, total, xs, xtotal] = tr.sortedGaps(explain);
         const point = (o, a, b, time) => ({ ...loc(a, b), message_ordinal: o, channel_id: cid, [basis]: time });
+        const at = (i) => point(tr.ords.get(i), tr.locA.get(i), tr.locB.get(i), tr.times.get(i));
         const bad = sample.map(([a, b, g]) =>
-          tr.monotonic
+          tr.monotonic && explain === null
             ? { previous: point(a[0], a[1], a[2], a[k]), current: point(b[0], b[1], b[2], b[k]), gap_ns: g }
-            : { previous: point(tr.ords.get(a), tr.locA.get(a), tr.locB.get(a), tr.times.get(a)),
-                current: point(tr.ords.get(b), tr.locA.get(b), tr.locB.get(b), tr.times.get(b)), gap_ns: g });
-        finding(7, total ? 'fail' : 'pass', 'Adjacent sorted timestamps; only interior gaps. Equal-to-threshold passes.', bad,
-          { time_basis: basis, ...ctx }, total);
+            : { previous: at(a), current: at(b), gap_ns: g });
+        const status = total ? 'fail' : 'pass';
+        if (info === null) finding(7, status, GAP_DETAIL, bad, { time_basis: basis, ...ctx }, total);
+        else if (wins === null || basis !== 'log_time')
+          finding(7, status, wins === null ? GAP_EVENTS_LIMIT : GAP_EVENTS_UNUSED, bad, { time_basis: basis, ...ctx }, total);
+        else {
+          const explained = xs.map(([a, b, g, why]) => ({ previous: at(a), current: at(b), gap_ns: g, explained_by: why }));
+          finding(7, status, GAP_EVENTS_DETAIL, bad, { time_basis: basis, ...ctx, explained_gap_count: xtotal, explained_gaps: explained }, total);
+        }
       } else finding(7, 'skipped', 'Gap threshold absent or fewer than two messages.', null, ctx);
       if (t.get('check_regression') === true && n >= 2) {
         finding(8, tr.regBadN ? 'fail' : 'pass', 'Strictly decreasing timestamps in physical record order; equal values allowed.',

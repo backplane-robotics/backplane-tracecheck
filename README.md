@@ -5,7 +5,8 @@
 Tracecheck reads an [MCAP](https://mcap.dev) recording (the default ROS 2 bag format) and checks it against a small JSON *recording contract*: which topics must be present, their schemas and encodings, message counts, rates, timestamp gaps, regressions, sequence continuity and time coverage. It produces a JSON report and a readable HTML report. Findings include relevant file locations where available; missing items are reported as gaps.
 
 - Free and open source (Apache-2.0).
-- Read-only. Message payloads are never decoded or executed.
+- Read-only. Message payloads are never executed, and are not decoded, with one narrow exception: from recognised recorder event messages (rosbag2_dynamic_recorder pause and topic events) only the action and topic name are read.
+- Gaps covered by a pause or topic change that the recorder wrote into the recording are listed as explained instead of failing. The events are the recorder's own account; Tracecheck does not verify them.
 - No robot, ROS install, account or cloud service needed.
 - Streams large recordings, subject to processing limits and available device resources (see the limit options below). zstd and lz4 chunks are decoded with bounded output.
 - Runs as a Python CLI or in your browser at **[backplanerobotics.com/tracecheck](https://backplanerobotics.com/tracecheck/)**, where recording files are processed on your device and not uploaded.

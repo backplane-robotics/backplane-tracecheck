@@ -11,7 +11,8 @@ and so the browser implementation in ``web/`` can mirror it exactly.
 * Fast mode reads only the header, footer and summary section (plus indexed
   metadata records), so multi-GB files are inventoried in milliseconds.
 
-Message payloads are never decoded.
+Message payloads are not decoded, except recognised recorder event messages (see
+``events.py``), from which only an action and a topic name are read.
 """
 
 from __future__ import annotations
@@ -24,6 +25,8 @@ import zlib
 from array import array
 from dataclasses import dataclass, field
 from typing import BinaryIO, Callable
+
+from . import events as rec_events
 
 MAGIC = b"\x89MCAP0\r\n"
 (
@@ -306,26 +309,37 @@ class Track:
             self.loc_a.append(m[1])
             self.loc_b.append(m[2])
 
-    def sorted_gaps(self) -> tuple[list, int]:
-        """Return (evidence sample, total) of sorted-adjacent gaps above ``max_gap``.
+    def sorted_gaps(self, explain: Callable[[int, int], list | None] | None = None) -> tuple[list, int, list, int]:
+        """Return (sample, total, explained sample, explained total) of sorted-adjacent gaps above ``max_gap``.
 
-        Each sample item is ``(prev_index, cur_index, gap)`` into the stored arrays,
-        or, for the in-order fast path, ``(prev_msg, cur_msg, gap)`` tuples.
+        Each sample item is ``(prev_index, cur_index, gap)`` into the stored arrays, or, for the
+        in-order fast path without ``explain``, ``(prev_msg, cur_msg, gap)`` tuples. When ``explain``
+        is given, items are always index-based, and gaps it explains are counted separately with
+        its labels as a fourth item.
         """
         k = 3 if self.cfg.basis_log else 4
-        if self.monotonic:
-            return [(a, b, b[k] - a[k]) for a, b in self.gap_bad], self.gap_bad_n
+        if self.monotonic and explain is None:
+            return [(a, b, b[k] - a[k]) for a, b in self.gap_bad], self.gap_bad_n, [], 0
         times, limit = self.times, self.cfg.max_gap
-        order = sorted(range(len(times)), key=times.__getitem__)  # stable: ties keep file order
-        sample, total = [], 0
+        if self.monotonic:
+            order = range(len(times))
+        else:
+            order = sorted(range(len(times)), key=times.__getitem__)  # stable: ties keep file order
+        sample, total, explained, explained_n = [], 0, [], 0
         for i in range(1, len(order)):
             a, b = order[i - 1], order[i]
             g = times[b] - times[a]
             if g > limit:
+                why = explain(times[a], times[b]) if explain is not None else None
+                if why:
+                    explained_n += 1
+                    if len(explained) < self.ev:
+                        explained.append((a, b, g, why))
+                    continue
                 total += 1
                 if len(sample) < self.ev:
                     sample.append((a, b, g))
-        return sample, total
+        return sample, total, explained, explained_n
 
 
 # --------------------------------------------------------------------------- results
@@ -351,6 +365,9 @@ class ScanResult:
     complete_bytes: int = 0  # end offset of the last complete top-level record
     data_end_seen: bool = False
     log_time_range: tuple[int, int] | None = None  # min and max log_time over all messages read
+    # Full scan only. Recognised recorder event messages; None when the recording has none.
+    recorder_events: dict | None = None
+    events: list = field(default_factory=list)  # (log_time, ordinal, kind, action, topic)
 
 
 class _Registry:
@@ -465,6 +482,26 @@ def scan_full(
     header_seen = False
     summary_crc_start = None
     t_lo = t_hi = None
+    event_kind: dict[int, str] = {}  # channel id -> recognised recorder event type
+
+    def on_event(kind: str, buf, body: int, end: int, log_t: int) -> None:
+        info = r.recorder_events
+        if info is None:
+            info = r.recorder_events = {"recorder": "rosbag2_dynamic_recorder (dynrec)", "message_counts": {},
+                                        "decoded": 0, "undecodable": 0, "limit_reached": False,
+                                        "note": rec_events.NOTE}  # fmt: skip
+        counts = info["message_counts"]
+        counts[kind] = counts.get(kind, 0) + 1
+        if kind not in ("PauseEvent", "SubscriptionChangeEvent"):
+            return
+        ev_ = rec_events.decode(kind, bytes(buf[body + 22 : end]))
+        if ev_ is None:
+            info["undecodable"] += 1
+        elif len(r.events) >= rec_events.EVENT_LIMIT:
+            info["limit_reached"] = True
+        else:
+            info["decoded"] += 1
+            r.events.append((log_t, stats["messages"], ev_[0], ev_[1], ev_[2]))
 
     def on_message(buf, body, end, a: int, b: int) -> None:
         nonlocal tracked, t_lo, t_hi
@@ -481,6 +518,9 @@ def scan_full(
             t_lo = log_t
         if t_hi is None or log_t > t_hi:
             t_hi = log_t
+        kind = event_kind.get(cid)
+        if kind is not None:
+            on_event(kind, buf, body, end, log_t)
         if tr.cfg is None:
             tr.count += 1
             return
@@ -496,7 +536,12 @@ def scan_full(
     def on_channel(c: _Cursor, loc: dict) -> None:
         cid = reg.channel(c, loc)
         if cid not in tracks:
-            tracks[cid] = Track(cid, plan(r.channels[cid]["value"]["topic"]), ev)
+            ch = r.channels[cid]["value"]
+            tracks[cid] = Track(cid, plan(ch["topic"]), ev)
+            schema = r.schemas.get(ch["schema_id"], {}).get("value", {})
+            kind = rec_events.event_type(schema.get("name"), ch["message_encoding"])
+            if kind is not None:
+                event_kind[cid] = kind
 
     def count_record() -> None:
         stats["records"] += 1

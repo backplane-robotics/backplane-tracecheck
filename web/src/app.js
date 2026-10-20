@@ -286,7 +286,8 @@ $('cancel-btn').addEventListener('click', () => {
 const STATUS_TEXT = { pass: 'Pass', warn: 'Warn', fail: 'Fail', skipped: 'Skipped' };
 const pill = (s) => h('span', { class: `pill ${s}`, text: s });
 const FACT_KEYS = ['topic', 'channel_id', 'observed', 'expected', 'observed_hz', 'minimum', 'maximum', 'time_basis', 'expected_interval_ns',
-  'boundary_tolerance_ns', 'missing_crc_policy', 'crc_coverage_complete', 'unknown_records_skipped'];
+  'boundary_tolerance_ns', 'missing_crc_policy', 'crc_coverage_complete', 'unknown_records_skipped', 'explained_gap_count'];
+const EXPLAINED_LABELS = { recorder_paused: 'recorder paused', topic_unsubscribed: 'topic unsubscribed by recorder' };
 
 const fmtNs = (ns) => {
   const n = Number(ns);
@@ -298,13 +299,15 @@ const kvs = (obj, prefix = '') =>
       ? kvs(v, `${prefix}${k}.`)
       : [h('span', { class: 'kv' }, h('i', { text: prefix + k }), h('b', { text: Array.isArray(v) ? `[${v.map(String).join(', ')}]` : v === null ? 'null' : String(v) }))]);
 
-function evidenceLine(ev) {
+function evidenceLine(ev, explained = false) {
   if (ev.previous && ev.current) {
-    const rest = Object.fromEntries(Object.entries(ev).filter(([k]) => k !== 'previous' && k !== 'current'));
+    const rest = Object.fromEntries(Object.entries(ev).filter(([k]) => k !== 'previous' && k !== 'current')
+      .map(([k, v]) => [k, k === 'explained_by' && Array.isArray(v) ? v.map((x) => EXPLAINED_LABELS[x] || x).join(', ') : v]));
+    const tag = 'gap_ns' in rest ? `gap ${fmtNs(rest.gap_ns)}${explained ? ' · explained' : ''}` : 'detail';
     return h('li', { class: 'ev pair' },
       h('div', { class: 'ev-row' }, h('span', { class: 'ev-tag', text: 'previous' }), kvs(ev.previous)),
       h('div', { class: 'ev-row' }, h('span', { class: 'ev-tag', text: 'current' }), kvs(ev.current)),
-      Object.keys(rest).length ? h('div', { class: 'ev-row' }, h('span', { class: 'ev-tag hot', text: 'gap_ns' in rest ? `gap ${fmtNs(rest.gap_ns)}` : 'detail' }), kvs(rest)) : null);
+      Object.keys(rest).length ? h('div', { class: 'ev-row' }, h('span', { class: explained ? 'ev-tag' : 'ev-tag hot', text: tag }), kvs(rest)) : null);
   }
   return h('li', { class: 'ev' }, kvs(ev));
 }
@@ -316,7 +319,12 @@ function findingEl(f) {
   if (facts.length) el.append(h('div', { class: 'facts' }, facts));
   if (Array.isArray(f.evidence) && f.evidence.length) {
     el.append(h('div', { class: 'ev-head mono' }, `Evidence · ${fmtNum(f.evidence_count)} total${f.evidence_omitted ? ` · ${fmtNum(f.evidence_omitted)} not shown` : ''}`));
-    el.append(h('ul', { class: 'ev-list' }, f.evidence.map(evidenceLine)));
+    el.append(h('ul', { class: 'ev-list' }, f.evidence.map((ev) => evidenceLine(ev))));
+  }
+  if (Array.isArray(f.explained_gaps) && f.explained_gaps.length) {
+    const hidden = Number(f.explained_gap_count) - f.explained_gaps.length;
+    el.append(h('div', { class: 'ev-head mono' }, `Explained by recorder events · ${fmtNum(f.explained_gap_count)} total${hidden > 0 ? ` · ${fmtNum(hidden)} not shown` : ''}`));
+    el.append(h('ul', { class: 'ev-list explained' }, f.explained_gaps.map((ev) => evidenceLine(ev, true))));
   }
   return el;
 }

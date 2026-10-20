@@ -1,4 +1,4 @@
-"""Contract checks over MCAP records. Message payloads are never decoded."""
+"""Contract checks over MCAP records. Payloads are not decoded, except recognised recorder events."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import BinaryIO, Callable
 
 from . import __version__
+from . import events as rec_events
 from .contract import validate
 from .reader import (
     META_PAIRS_LIMIT,
@@ -43,6 +44,15 @@ FULL_SCAN_ONLY = "Fast mode reads only the summary section; this check needs a f
 INCOMPLETE = "Scan incomplete; no completeness or timing conclusion."
 TRUNCATED_SKIP = ("Recording is incomplete, so this check was not evaluated on the partial data. "
                   "See the recovered summary.")  # fmt: skip
+GAP_DETAIL = "Adjacent sorted timestamps; only interior gaps. Equal-to-threshold passes."
+GAP_EVENTS_DETAIL = (GAP_DETAIL + " Gaps covered by a recorder pause or unsubscribe event written in the recording "
+                     "are listed as explained and do not fail; the events are not verified.")  # fmt: skip
+GAP_EVENTS_UNUSED = (GAP_DETAIL + " Recorder events in this recording were not used: they are matched on "
+                     "log_time only.")  # fmt: skip
+GAP_EVENTS_LIMIT = (GAP_DETAIL + " Recorder events in this recording were not used: more than "
+                    f"{rec_events.EVENT_LIMIT} pause or subscription events.")  # fmt: skip
+PROVENANCE_EVENTS = ("Local read-only scan; user-supplied contract; no execution. Payloads are not decoded, except "
+                     "recognised recorder event messages (action and topic name only).")  # fmt: skip
 
 __all__ = ["Limits", "ScanError", "analyze_bytes", "analyze_file", "analyze_stream", "NAMES", "REPORT_VERSION"]
 
@@ -140,6 +150,9 @@ def analyze_stream(
         crc = r.crc
         result.update(scan_complete=True, mcap_profile=r.profile, checksum_coverage=crc,
                       compression=r.compression, scan_stats=r.stats)  # fmt: skip
+        if r.recorder_events is not None:
+            result["recorder_events"] = r.recorder_events
+            result["provenance"] = PROVENANCE_EVENTS
         if r.mode == "full":
             # Message bytes are CRC-protected by a verified data-section CRC, or else by per-chunk CRCs.
             # Unchunked messages are protected only by the data-section CRC.
@@ -173,6 +186,8 @@ def analyze_stream(
         return finish(result)
 
     schemas, channels, metadata = r.schemas, r.channels, r.metadata
+    info = r.recorder_events
+    wins = rec_events.windows(r.events) if info is not None and not info["limit_reached"] else None
 
     def count_of(cid):
         if r.counts is not None:
@@ -256,21 +271,33 @@ def analyze_stream(
             else:
                 finding(6, "skipped", "Rate bounds absent, fewer than two messages, or zero timestamp span.", **ctx)
             if "max_gap_ns" in t and n >= 2:
-                sample, total = tr.sorted_gaps()
+                explain = None
+                if wins is not None and basis == "log_time":
+                    explain = rec_events.explainer(wins, topic, t["max_gap_ns"])
+                sample, total, xs, xtotal = tr.sorted_gaps(explain)
+
+                def point(a):
+                    return dict(_loc(tr.loc_a[a], tr.loc_b[a]), message_ordinal=tr.ords[a], channel_id=cid,
+                                **{basis: tr.times[a]})  # fmt: skip
+
                 bad = []
                 for a, b, g in sample:
-                    if tr.monotonic:
+                    if tr.monotonic and explain is None:
                         pa = dict(_loc(a[1], a[2]), message_ordinal=a[0], channel_id=cid, **{basis: a[k]})
                         pb = dict(_loc(b[1], b[2]), message_ordinal=b[0], channel_id=cid, **{basis: b[k]})
                     else:
-                        pa = dict(_loc(tr.loc_a[a], tr.loc_b[a]), message_ordinal=tr.ords[a], channel_id=cid,
-                                  **{basis: tr.times[a]})  # fmt: skip
-                        pb = dict(_loc(tr.loc_a[b], tr.loc_b[b]), message_ordinal=tr.ords[b], channel_id=cid,
-                                  **{basis: tr.times[b]})  # fmt: skip
+                        pa, pb = point(a), point(b)
                     bad.append({"previous": pa, "current": pb, "gap_ns": g})
-                finding(7, "fail" if total else "pass",
-                        "Adjacent sorted timestamps; only interior gaps. Equal-to-threshold passes.",
-                        bad, total=total, time_basis=basis, **ctx)  # fmt: skip
+                if info is None:
+                    finding(7, "fail" if total else "pass", GAP_DETAIL, bad, total=total, time_basis=basis, **ctx)
+                elif wins is None or basis != "log_time":
+                    finding(7, "fail" if total else "pass", GAP_EVENTS_LIMIT if wins is None else GAP_EVENTS_UNUSED,
+                            bad, total=total, time_basis=basis, **ctx)  # fmt: skip
+                else:
+                    explained = [{"previous": point(a), "current": point(b), "gap_ns": g, "explained_by": why}
+                                 for a, b, g, why in xs]  # fmt: skip
+                    finding(7, "fail" if total else "pass", GAP_EVENTS_DETAIL, bad, total=total, time_basis=basis,
+                            **ctx, explained_gap_count=xtotal, explained_gaps=explained)  # fmt: skip
             else:
                 finding(7, "skipped", "Gap threshold absent or fewer than two messages.", **ctx)
             if t.get("check_regression") and n >= 2:

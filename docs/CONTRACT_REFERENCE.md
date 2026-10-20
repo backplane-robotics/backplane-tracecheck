@@ -25,7 +25,7 @@ Contracts are UTF-8 JSON objects up to 64 KiB. Keys are case-sensitive; duplicat
 | `time_basis` | `log_time` (default) or `publish_time`. These are MCAP Message fields, not decoded ROS header stamps. |
 | `clock_confirmed` | Boolean, default false. All four timing checks skip unless true. User asserts the clock is interpretable for this requirement. |
 | `min_rate_hz`, `max_rate_hz` | Optional inclusive bounds for observed average `(N−1)/(last−first)` after sorting. Not windowed rate or proof of session completeness. Use interval/gap checks too. |
-| `max_gap_ns` | Optional inclusive upper limit between adjacent **sorted** timestamps. Does not include leading/trailing gaps. |
+| `max_gap_ns` | Optional inclusive upper limit between adjacent **sorted** timestamps. Does not include leading/trailing gaps. On the `log_time` basis, a gap covered by a rosbag2_dynamic_recorder pause or unsubscribe event in the recording is listed under `explained_gaps` and does not fail, provided no uncovered part of the gap exceeds the limit. |
 | `check_regression` | Boolean, default false. Strict decreases in **physical record order** fail; equal timestamps pass. |
 | `sequence` | `disabled` (default) or `increment_mod32`. The latter asserts one unit-incrementing sequence source per channel, allowing wrap from 2^32−1 to 0; resets, duplicates and jumps fail. |
 | `interval_ns` | Optional inclusive `[start,end]`, with start < end, on the selected clock. All recorded timestamps must be inside; first and last must reach the respective boundaries within tolerance. |

@@ -9,6 +9,8 @@ All notable changes to this project are documented here. The format follows
 ### Added
 - **Incomplete recordings.** A file that ends before its MCAP footer (for example, a recorder that stopped mid-write, or a file cut off while copying) now gets a specific C01 finding and a `recovered` report section: readable bytes, complete messages, log-time span, per-topic counts, and whether all message data was read. The other checks stay skipped; they are not evaluated on partial data. Shown in the CLI summary, the web app and the HTML report.
 - `interrupted-zstd.mcap` synthetic example and web demo.
+- **Gaps explained by recorder events.** When a recording contains rosbag2_dynamic_recorder (dynrec) `PauseEvent` or `SubscriptionChangeEvent` messages, C07 lists gaps covered by a recorded pause or topic unsubscribe as *explained* (with `explained_gap_count` and `explained_gaps`); they don't fail. Unexplained gaps still fail. The events are the recorder's own account and are not verified. Only their action and topic name are read; all other payloads stay opaque. Applies to the `log_time` basis only. A new top-level `recorder_events` section summarises the events found.
+- `fleet-paused-zstd.mcap` synthetic example and "Paused recording (dynrec)" web demo.
 - FCC Covered List robot tracker page on the website (`/tools/covered-list-robots/`).
 
 ### Changed

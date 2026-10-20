@@ -1,10 +1,12 @@
 // Strict, bounded, streaming MCAP reader: a port of src/tracecheck/reader.py.
 // Reads a Blob/File sequentially with Blob.slice(), so multi-GB recordings never have to fit
-// in memory. SHA-256 and the MCAP CRCs are computed on the fly. Payloads are never decoded.
+// in memory. SHA-256 and the MCAP CRCs are computed on the fly. Payloads are not decoded, except
+// recognised recorder event messages (events.js), from which only an action and topic name are read.
 
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { crc32 } from './crc32.js';
+import { EVENT_LIMIT, NOTE, decode as decodeEvent, eventType } from './events.js';
 import { lz4Decompress } from './lz4.js';
 import { decompressInto } from './vendor/fzstd.js';
 
@@ -251,26 +253,37 @@ export class Track {
       this.locB.push(m[2]);
     }
   }
-  /** [sample, total]; sample items are [a, b, gap] where a/b are messages (in-order) or indices. */
-  sortedGaps() {
+  /**
+   * [sample, total, explained, explainedTotal]. Sample items are [a, b, gap] where a/b are messages
+   * (in-order, no explain) or indices; explained items add the labels from `explain` as a fourth item.
+   */
+  sortedGaps(explain = null) {
     const k = this.cfg.basisLog ? 3 : 4;
-    if (this.monotonic) return [this.gapBad.map(([a, b]) => [a, b, b[k] - a[k]]), this.gapBadN];
+    if (this.monotonic && explain === null) return [this.gapBad.map(([a, b]) => [a, b, b[k] - a[k]]), this.gapBadN, [], 0];
     const times = this.times.a;
     const n = this.times.n;
     const order = Array.from({ length: n }, (_, i) => i);
-    order.sort((x, y) => (times[x] < times[y] ? -1 : times[x] > times[y] ? 1 : x - y));
+    if (!this.monotonic) order.sort((x, y) => (times[x] < times[y] ? -1 : times[x] > times[y] ? 1 : x - y));
     const sample = [];
+    const explained = [];
     let total = 0;
+    let explainedN = 0;
     for (let i = 1; i < n; i++) {
       const a = order[i - 1];
       const b = order[i];
       const g = times[b] - times[a];
       if (g > this.cfg.maxGap) {
+        const why = explain !== null ? explain(times[a], times[b]) : null;
+        if (why) {
+          explainedN++;
+          if (explained.length < this.ev) explained.push([a, b, g, why]);
+          continue;
+        }
         total++;
         if (sample.length < this.ev) sample.push([a, b, g]);
       }
     }
-    return [sample, total];
+    return [sample, total, explained, explainedN];
   }
 }
 
@@ -283,7 +296,7 @@ function mapEquals(a, b) {
 function newResult(mode, size) {
   return { mode, size, sha256: null, profile: null, schemas: new Map(), channels: new Map(), metadata: [],
     tracks: new Map(), counts: null, crc: {}, compression: {}, unknown: 0, stats: {}, fastFallback: null,
-    completeBytes: 0, dataEndSeen: false, logTimeRange: null };
+    completeBytes: 0, dataEndSeen: false, logTimeRange: null, recorderEvents: null, events: [] };
 }
 
 class Registry {
@@ -417,6 +430,24 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
   let summaryCrcStart = null;
   let tLo = null;
   let tHi = null;
+  const eventKind = new Map(); // channel id -> recognised recorder event type
+
+  const onEvent = (kind, buf, body, end, logT) => {
+    let info = r.recorderEvents;
+    if (info === null) {
+      info = r.recorderEvents = { recorder: 'rosbag2_dynamic_recorder (dynrec)', message_counts: {}, decoded: 0, undecodable: 0,
+        limit_reached: false, note: NOTE };
+    }
+    info.message_counts[kind] = (info.message_counts[kind] || 0) + 1;
+    if (kind !== 'PauseEvent' && kind !== 'SubscriptionChangeEvent') return;
+    const got = decodeEvent(kind, buf.subarray(body + 22, end));
+    if (got === null) info.undecodable++;
+    else if (r.events.length >= EVENT_LIMIT) info.limit_reached = true;
+    else {
+      info.decoded++;
+      r.events.push([logT, stats.messages, got[0], got[1], got[2]]);
+    }
+  };
 
   const onMessage = (buf, dv, body, end, a, b) => {
     if (end - body < 22) throw new ScanError('message record too short');
@@ -427,6 +458,8 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
     const logT = dv.getBigUint64(body + 6, true);
     if (tLo === null || logT < tLo) tLo = logT;
     if (tHi === null || logT > tHi) tHi = logT;
+    const kind = eventKind.get(cid);
+    if (kind !== undefined) onEvent(kind, buf, body, end, logT);
     if (tr.cfg === null) {
       tr.count++;
       return;
@@ -437,7 +470,12 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
   };
   const onChannel = (c, loc) => {
     const cid = reg.channel(c, loc);
-    if (!tracks.has(cid)) tracks.set(cid, new Track(cid, plan(r.channels.get(cid).value.topic), ev));
+    if (!tracks.has(cid)) {
+      const ch = r.channels.get(cid).value;
+      tracks.set(cid, new Track(cid, plan(ch.topic), ev));
+      const kind = eventType(r.schemas.get(ch.schema_id)?.value?.name, ch.message_encoding);
+      if (kind !== null) eventKind.set(cid, kind);
+    }
   };
   const countRecord = () => {
     if (++stats.records > limits.max_records) throw new ScanError('record count exceeds limit');

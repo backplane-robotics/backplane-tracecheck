@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { ContractError, loads } from '../src/engine/contract.js';
 import { crc32 } from '../src/engine/crc32.js';
 import { analyze, reportJson } from '../src/engine/engine.js';
+import { decode as decodeEvent, eventType, explainer, windows } from '../src/engine/events.js';
 import { PyFloat, dumps, parse, pyFloatRepr } from '../src/engine/json.js';
 import { lz4Decompress } from '../src/engine/lz4.js';
 import { DEFAULT_LIMITS, decompress } from '../src/engine/reader.js';
@@ -151,5 +152,45 @@ describe('codecs and limits', () => {
   });
   it('escapes HTML', () => {
     expect(esc(`<a href="x">'&`)).toBe('&lt;a href=&quot;x&quot;&gt;&#x27;&amp;');
+  });
+});
+
+// Little-endian plain CDR, like samples._cdr_event: Time stamp, then uint8 (number) and string fields.
+function cdrEvent(...fields) {
+  const out = [0, 1, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0];
+  for (const f of fields) {
+    if (typeof f === 'number') out.push(f);
+    else {
+      while ((out.length - 4) % 4) out.push(0);
+      const b = [...new TextEncoder().encode(f), 0];
+      out.push(b.length, 0, 0, 0, ...b);
+    }
+  }
+  return new Uint8Array(out);
+}
+
+describe('recorder events', () => {
+  it('decodes dynrec pause and subscription events', () => {
+    expect(decodeEvent('PauseEvent', cdrEvent(0, 'service:pause', '/n'))).toEqual(['pause', 0, null]);
+    expect(decodeEvent('SubscriptionChangeEvent', cdrEvent('/scan', 'sensor_msgs/msg/LaserScan', 1, 'r', '/n'))).toEqual(['subscription', 1, '/scan']);
+    expect(decodeEvent('PauseEvent', cdrEvent(7, 'r', '/n'))).toBeNull();
+    expect(decodeEvent('PauseEvent', new Uint8Array([0, 1, 0, 0, 1, 2]))).toBeNull();
+    expect(decodeEvent('LowDiskEvent', cdrEvent(0))).toBeNull();
+    expect(eventType('rosbag2_dynamic_recorder_interfaces/msg/PauseEvent', 'cdr')).toBe('PauseEvent');
+    expect(eventType('rosbag2_dynamic_recorder_interfaces/msg/PauseEvent', 'json')).toBeNull();
+  });
+  it('explains only gaps covered within the threshold', () => {
+    const wins = windows([[100n, 1, 'pause', 0, null], [200n, 2, 'pause', 1, null]]);
+    const explain = explainer(wins, '/imu', 10n);
+    expect(explain(95n, 205n)).toEqual(['recorder_paused']);
+    expect(explain(80n, 205n)).toBeNull();
+    expect(explainer(windows([[1n, 1, 'subscription', 1, '/cam']]), '/imu', 10n)).toBeNull();
+  });
+  it('lists explained gaps in the paused demo and passes', async () => {
+    const r = await analyze(blobOf('fleet-paused-zstd.mcap'), contractOf('fleet-contract.json'));
+    expect(r.overall).toBe('pass');
+    const cam = r.checks[6].findings.find((f) => f.topic === '/camera/image/compressed');
+    expect(cam.explained_gaps.map((g) => g.explained_by)).toEqual([['recorder_paused'], ['topic_unsubscribed']]);
+    expect(render(r)).toContain('explained_gaps');
   });
 });
