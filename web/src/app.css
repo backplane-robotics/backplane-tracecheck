@@ -33,6 +33,8 @@
 .dz-icon svg { width: 26px; height: 26px; }
 .dz-text b { display: block; font-size: 1.02rem; word-break: break-all; }
 .dz-text span { font-size: 0.85rem; color: var(--muted); }
+.bag-pick { display: flex; align-items: center; justify-content: space-between; gap: 10px 14px; flex-wrap: wrap; margin-top: 12px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.015); font-size: 0.85rem; }
+.bag-pick.active { border-color: var(--teal); background: rgba(42, 245, 210, 0.07); }
 .demo-head { margin: 22px 0 10px; font-size: 0.78rem; }
 .demo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
 .demo {
@@ -180,6 +182,12 @@ select {
 .recovered-facts dd { margin: 0; font-size: 0.95rem; }
 .recovered .tiny { font-size: 0.8rem; margin: 14px 0 0; }
 @media (max-width: 720px) { .recovered-facts { grid-template-columns: 1fr 1fr; } }
+/* Files of a ROS 2 bag folder. */
+.bag-files { margin: 0 0 20px; }
+.bag-files h3 { font-size: 1.1rem; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bag-files .tiny { font-size: 0.8rem; margin: 14px 0 0; }
+.bag-files td.bad { color: var(--fail); }
+.bag-files td.warn { color: var(--amber); }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
 th { text-align: left; font: 600 0.7rem var(--mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--dim); padding: 10px 12px; border-bottom: 1px solid var(--line-hi); }

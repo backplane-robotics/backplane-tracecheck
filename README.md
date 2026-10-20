@@ -7,6 +7,7 @@ Tracecheck reads an [MCAP](https://mcap.dev) recording (the default ROS 2 bag fo
 - Free and open source (Apache-2.0).
 - Read-only. Message payloads are never executed, and are not decoded, with one narrow exception: from recognised recorder event messages (rosbag2_dynamic_recorder pause and topic events) only the action and topic name are read.
 - Gaps covered by a pause or topic change that the recorder wrote into the recording are listed as explained instead of failing. The events are the recorder's own account; Tracecheck does not verify them.
+- Checks a ROS 2 bag folder (`metadata.yaml` plus split `.mcap` files) as one recording: gaps and sequence breaks across file boundaries count, and the counts in `metadata.yaml` are compared with what the files contain (C11).
 - No robot, ROS install, account or cloud service needed.
 - Streams large recordings, subject to processing limits and available device resources (see the limit options below). zstd and lz4 chunks are decoded with bounded output.
 - Runs as a Python CLI or in your browser at **[backplanerobotics.com/tracecheck](https://backplanerobotics.com/tracecheck/)**, where recording files are processed on your device and not uploaded.
@@ -31,6 +32,9 @@ tracecheck validate-contract examples/demo-contract.json
 tracecheck check examples/clean.mcap  --contract examples/demo-contract.json --out reports/clean
 tracecheck check examples/faults.mcap --contract examples/demo-contract.json --out reports/faults
 
+# A ROS 2 bag folder (metadata.yaml + split .mcap files), checked as one recording
+tracecheck check examples/fleet-bag --contract examples/fleet-contract.json --out reports/fleet-bag
+
 # Optional local browser UI (binds to 127.0.0.1 only)
 tracecheck serve --open
 ```
@@ -41,7 +45,7 @@ tracecheck serve --open
 
 | Option | Effect |
 |---|---|
-| `--fast` | Read only the summary section: inventory, counts, schemas and metadata in milliseconds. Timing checks (C06–C10) skip. Falls back to a full scan if the file has no usable summary. |
+| `--fast` | Read only the summary section: inventory, counts, schemas and metadata in milliseconds. Timing checks (C06–C10) skip. Falls back to a full scan if the file has no usable summary (for a bag folder, if any file has none, the whole folder is scanned in full). |
 | `--ignore-missing-crc` | Don't warn when the writer stored no CRCs (same as `"missing_crc": "ignore"` in the contract). Corrupt CRCs still fail. |
 | `--fail-on fail` | Exit 0 on warnings, exit 1 only on failures (the default `warn` also exits 1 on warnings). |
 | `--timeout SECONDS` | Stop a scan that takes too long. |
@@ -50,7 +54,7 @@ tracecheck serve --open
 **Exit codes**
 - `0`: overall pass.
 - `1`: contract failures, warnings or an incomplete scan (all recorded in the report).
-- `2`: configuration, input or operational error. No report is written.
+- `2`: configuration, input or operational error, including a bag folder that can't be checked (for example, sqlite3 storage or rosbag2 file compression). No report is written.
 
 ## In the browser
 
@@ -74,7 +78,7 @@ tracecheck serve --open
 
 Start minimal, then read the report's channel inventory to see the actual schema names, encodings and fingerprints. Add only the requirements you can justify. See [docs/CONTRACT_REFERENCE.md](https://github.com/backplane-robotics/backplane-tracecheck/blob/main/docs/CONTRACT_REFERENCE.md) for every key.
 
-## The ten checks
+## The checks
 
 | ID | Check |
 |---|---|
@@ -88,6 +92,7 @@ Start minimal, then read the report's channel inventory to see the actual schema
 | C08 | Record-order timestamp regressions |
 | C09 | Sequence continuity |
 | C10 | Expected interval coverage |
+| C11 | ROS 2 bag metadata agreement (bag folders only) |
 
 **Statuses**
 - **PASS:** the configured requirement was met.

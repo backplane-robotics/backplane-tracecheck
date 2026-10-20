@@ -200,9 +200,9 @@ class Grow {
   }
 }
 
-/** Incremental per-channel statistics; see reader.py Track. Messages are [ord, a, b, log, pub, seq]. */
+/** Incremental per-channel statistics; see reader.py Track. Messages are [ord, a, b, log, pub, seq, fileOrNull]. */
 export class Track {
-  constructor(cid, cfg, evidence) {
+  constructor(cid, cfg, evidence, bag = false) {
     this.cid = cid;
     this.cfg = cfg;
     this.ev = evidence;
@@ -219,6 +219,7 @@ export class Track {
       this.locA = new Grow(Float64Array);
       this.locB = new Grow(Float64Array);
     } else this.times = null;
+    this.files = this.times && bag ? [] : null; // file name per stored message (bags only)
   }
   add(m) {
     this.count++;
@@ -251,6 +252,7 @@ export class Track {
       this.ords.push(m[0]);
       this.locA.push(m[1]);
       this.locB.push(m[2]);
+      if (this.files) this.files.push(m[6]);
     }
   }
   /**
@@ -339,6 +341,60 @@ class Registry {
   }
 }
 
+/** Joins the split files of one ROS 2 bag into one recording. See BagContext in reader.py. */
+export class BagContext {
+  constructor(names, limits) {
+    this.names = names;
+    this.limits = limits;
+    this.name = null; // file being scanned
+    this.base = 0; // messages in earlier files
+    this.tracked = 0;
+    this.schemas = new Map();
+    this.channels = new Map();
+    this.tracks = new Map();
+    this.cmap = new Map(); // current file: channel id -> logical id
+    this.schemaKeys = new Map();
+    this.channelKeys = new Map();
+  }
+  startFile(i) {
+    this.name = this.names[i];
+    this.cmap = new Map();
+  }
+  loc(loc) {
+    return { file: this.name, ...loc };
+  }
+  schema(sid, schemas) {
+    if (!sid) return 0;
+    const x = schemas.get(sid);
+    const v = x.value;
+    const key = JSON.stringify([v.name, v.encoding, v.sha256]);
+    let lid = this.schemaKeys.get(key);
+    if (lid === undefined) {
+      lid = this.schemas.has(sid) ? Math.max(...this.schemas.keys()) + 1 : sid;
+      this.schemaKeys.set(key, lid);
+      this.schemas.set(lid, { value: v, location: this.loc(x.location) });
+    }
+    return lid;
+  }
+  /** Map channel `cid` of the current file (already in `r`) to its logical id. */
+  channel(cid, r) {
+    const x = r.channels.get(cid);
+    const v = x.value;
+    const sid = this.schema(v.schema_id, r.schemas);
+    const key = JSON.stringify([v.topic, v.message_encoding, sid]);
+    let lid = this.channelKeys.get(key);
+    if (lid === undefined) {
+      lid = this.channels.has(cid) ? Math.max(...this.channels.keys()) + 1 : cid;
+      this.channelKeys.set(key, lid);
+      this.channels.set(lid, { value: { ...v, schema_id: sid }, location: this.loc(x.location) });
+      const n = this.limits.max_entities;
+      if (this.channels.size > n || this.schemas.size > n) throw new ScanError(`channel/schema count across the bag exceeds ${n}`);
+    }
+    this.cmap.set(cid, lid);
+    return lid;
+  }
+}
+
 /** Sequential Blob reader that hashes every byte once (at load) and CRCs consumed bytes. */
 class Source {
   constructor(blob, progress) {
@@ -413,7 +469,7 @@ class Source {
 
 // ----------------------------------------------------------------------------- full scan
 
-export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = null) {
+export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = null, ctx = null) {
   const started = performance.now();
   const size = blob.size;
   const r = newResult('full', size);
@@ -422,9 +478,13 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
   const src = new Source(blob, progress);
   const stats = { records: 0, messages: 0, unchunked_messages: 0, chunks: 0, attachments_skipped: 0 };
   r.stats = stats;
+  if (ctx) r.tracks = ctx.tracks;
   const tracks = r.tracks;
+  const lmap = new Map(); // channel id -> track key (the logical id in a bag)
+  const base = ctx ? ctx.base : 0;
+  const fname = ctx ? ctx.name : null;
   const ev = limits.evidence_per_finding;
-  let tracked = 0;
+  let tracked = ctx ? ctx.tracked : 0;
   let ended = false;
   let headerSeen = false;
   let summaryCrcStart = null;
@@ -445,14 +505,14 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
     else if (r.events.length >= EVENT_LIMIT) info.limit_reached = true;
     else {
       info.decoded++;
-      r.events.push([logT, stats.messages, got[0], got[1], got[2]]);
+      r.events.push([logT, base + stats.messages, got[0], got[1], got[2]]);
     }
   };
 
   const onMessage = (buf, dv, body, end, a, b) => {
     if (end - body < 22) throw new ScanError('message record too short');
     const cid = dv.getUint16(body, true);
-    const tr = tracks.get(cid);
+    const tr = tracks.get(lmap.get(cid));
     if (ended || tr === undefined) throw new ScanError('message after DataEnd or undefined channel');
     if (++stats.messages > limits.max_messages) throw new ScanError(`message count exceeds ${limits.max_messages}`);
     const logT = dv.getBigUint64(body + 6, true);
@@ -466,16 +526,17 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
     }
     if (tr.times && ++tracked > limits.max_tracked_messages)
       throw new ScanError(`gap-check timestamp storage exceeds ${limits.max_tracked_messages} messages; raise the max_tracked_messages limit`);
-    tr.add([stats.messages, a, b, logT, dv.getBigUint64(body + 14, true), dv.getUint32(body + 2, true)]);
+    tr.add([base + stats.messages, a, b, logT, dv.getBigUint64(body + 14, true), dv.getUint32(body + 2, true), fname]);
   };
   const onChannel = (c, loc) => {
     const cid = reg.channel(c, loc);
-    if (!tracks.has(cid)) {
-      const ch = r.channels.get(cid).value;
-      tracks.set(cid, new Track(cid, plan(ch.topic), ev));
-      const kind = eventType(r.schemas.get(ch.schema_id)?.value?.name, ch.message_encoding);
-      if (kind !== null) eventKind.set(cid, kind);
-    }
+    if (lmap.has(cid)) return;
+    const ch = r.channels.get(cid).value;
+    const key = ctx ? ctx.channel(cid, r) : cid;
+    lmap.set(cid, key);
+    if (!tracks.has(key)) tracks.set(key, new Track(key, plan(ch.topic), ev, ctx !== null));
+    const kind = eventType(r.schemas.get(ch.schema_id)?.value?.name, ch.message_encoding);
+    if (kind !== null) eventKind.set(cid, kind);
   };
   const countRecord = () => {
     if (++stats.records > limits.max_records) throw new ScanError('record count exceeds limit');
@@ -583,6 +644,11 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
     }
     r.sha256 = bytesToHex(src.sha.digest());
     r.stats.seconds = Math.round(performance.now() - started) / 1000;
+    r.logTimeRange = tLo === null ? null : [tLo, tHi];
+    if (ctx) {
+      ctx.base += stats.messages;
+      ctx.tracked = tracked;
+    }
     return r;
   } catch (e) {
     r.logTimeRange = tLo === null ? null : [tLo, tHi];

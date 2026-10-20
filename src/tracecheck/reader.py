@@ -254,10 +254,10 @@ class Track:
     __slots__ = (
         "cid", "cfg", "ev", "count", "first", "last", "lo", "hi", "monotonic",
         "seq_bad", "seq_bad_n", "reg_bad", "reg_bad_n", "gap_bad", "gap_bad_n",
-        "times", "ords", "loc_a", "loc_b",
+        "times", "ords", "loc_a", "loc_b", "files",
     )  # fmt: skip
 
-    def __init__(self, cid: int, cfg: TrackConfig | None, evidence_limit: int):
+    def __init__(self, cid: int, cfg: TrackConfig | None, evidence_limit: int, bag: bool = False):
         self.cid = cid
         self.cfg = cfg
         self.ev = evidence_limit
@@ -273,9 +273,10 @@ class Track:
         self.ords = array("Q") if gap else None
         self.loc_a = array("q") if gap else None
         self.loc_b = array("q") if gap else None
+        self.files: list | None = [] if gap and bag else None  # file name per stored message (bags only)
 
     def add(self, m: tuple) -> None:
-        """``m`` is ``(ordinal, loc_a, loc_b, log_time, publish_time, sequence)``."""
+        """``m`` is ``(ordinal, loc_a, loc_b, log_time, publish_time, sequence, file_name_or_None)``."""
         self.count += 1
         cfg = self.cfg
         k = 3 if cfg.basis_log else 4
@@ -308,6 +309,8 @@ class Track:
             self.ords.append(m[0])
             self.loc_a.append(m[1])
             self.loc_b.append(m[2])
+            if self.files is not None:
+                self.files.append(m[6])
 
     def sorted_gaps(self, explain: Callable[[int, int], list | None] | None = None) -> tuple[list, int, list, int]:
         """Return (sample, total, explained sample, explained total) of sorted-adjacent gaps above ``max_gap``.
@@ -407,6 +410,66 @@ class _Registry:
         self._bound()
 
 
+class BagContext:
+    """Joins the split files of one ROS 2 bag into one recording.
+
+    Each file has its own channel and schema ids. Channels are matched across files by topic,
+    message encoding and schema (name, encoding and SHA-256 of the schema data); a logical id
+    keeps the first file's id when it is free. Tracks, message ordinals and the gap-tracking
+    budget carry over from file to file, so gaps and sequence breaks at file boundaries count.
+    """
+
+    def __init__(self, names: list[str], limits: Limits):
+        self.names = names
+        self.limits = limits
+        self.name: str | None = None  # file being scanned
+        self.base = 0  # messages in earlier files
+        self.tracked = 0
+        self.schemas: dict = {}
+        self.channels: dict = {}
+        self.tracks: dict = {}
+        self.cmap: dict[int, int] = {}  # current file: channel id -> logical id
+        self._schema_keys: dict = {}
+        self._channel_keys: dict = {}
+
+    def start_file(self, i: int) -> None:
+        self.name = self.names[i]
+        self.cmap = {}
+
+    def _loc(self, loc: dict) -> dict:
+        return {"file": self.name, **loc}
+
+    def _schema(self, sid: int, schemas: dict) -> int:
+        if not sid:
+            return 0
+        x = schemas[sid]
+        v = x["value"]
+        key = (v["name"], v["encoding"], v["sha256"])
+        lid = self._schema_keys.get(key)
+        if lid is None:
+            lid = sid if sid not in self.schemas else max(self.schemas) + 1
+            self._schema_keys[key] = lid
+            self.schemas[lid] = {"value": v, "location": self._loc(x["location"])}
+        return lid
+
+    def channel(self, cid: int, r: ScanResult) -> int:
+        """Map channel ``cid`` of the current file (already in ``r``) to its logical id."""
+        x = r.channels[cid]
+        v = x["value"]
+        sid = self._schema(v["schema_id"], r.schemas)
+        key = (v["topic"], v["message_encoding"], sid)
+        lid = self._channel_keys.get(key)
+        if lid is None:
+            lid = cid if cid not in self.channels else max(self.channels) + 1
+            self._channel_keys[key] = lid
+            self.channels[lid] = {"value": dict(v, schema_id=sid), "location": self._loc(x["location"])}
+            n = self.limits.max_entities
+            if len(self.channels) > n or len(self.schemas) > n:
+                raise ScanError(f"channel/schema count across the bag exceeds {n}")
+        self.cmap[cid] = lid
+        return lid
+
+
 class _Source:
     """Sequential, strictly bounded file reader that hashes and CRCs every byte."""
 
@@ -458,8 +521,13 @@ def scan_full(
     plan: Callable[[str], TrackConfig | None],
     limits: Limits | None = None,
     progress: Callable[[int, int], None] | None = None,
+    ctx: BagContext | None = None,
 ) -> ScanResult:
-    """Read every record. Raises ScanError (with ``.result`` partially filled) on failure."""
+    """Read every record. Raises ScanError (with ``.result`` partially filled) on failure.
+
+    With ``ctx`` the file is one part of a bag: tracks live in ``ctx`` and are keyed by logical
+    channel id, and ordinals continue from earlier files.
+    """
     limits = limits or Limits()
     started = time.monotonic()
     r = ScanResult(mode="full", size=size)
@@ -475,8 +543,13 @@ def scan_full(
     src = _Source(f, size, progress)
     stats = {"records": 0, "messages": 0, "unchunked_messages": 0, "chunks": 0, "attachments_skipped": 0}
     r.stats = stats
+    if ctx is not None:
+        r.tracks = ctx.tracks
     tracks = r.tracks
-    tracked = 0
+    lmap: dict[int, int] = {}  # channel id -> track key (the logical id in a bag)
+    base = ctx.base if ctx is not None else 0
+    fname = ctx.name if ctx is not None else None
+    tracked = ctx.tracked if ctx is not None else 0
     ev = limits.evidence_per_finding
     ended = False
     header_seen = False
@@ -501,14 +574,14 @@ def scan_full(
             info["limit_reached"] = True
         else:
             info["decoded"] += 1
-            r.events.append((log_t, stats["messages"], ev_[0], ev_[1], ev_[2]))
+            r.events.append((log_t, base + stats["messages"], ev_[0], ev_[1], ev_[2]))
 
     def on_message(buf, body, end, a: int, b: int) -> None:
         nonlocal tracked, t_lo, t_hi
         if end - body < 22:
             raise ScanError("message record too short")
         cid, seq, log_t, pub_t = _MSG.unpack_from(buf, body)
-        tr = tracks.get(cid)
+        tr = tracks.get(lmap.get(cid))
         if ended or tr is None:
             raise ScanError("message after DataEnd or undefined channel")
         stats["messages"] += 1
@@ -531,17 +604,20 @@ def scan_full(
                     f"gap-check timestamp storage exceeds {limits.max_tracked_messages} messages; "
                     "raise the max_tracked_messages limit"
                 )
-        tr.add((stats["messages"], a, b, log_t, pub_t, seq))
+        tr.add((base + stats["messages"], a, b, log_t, pub_t, seq, fname))
 
     def on_channel(c: _Cursor, loc: dict) -> None:
         cid = reg.channel(c, loc)
-        if cid not in tracks:
-            ch = r.channels[cid]["value"]
-            tracks[cid] = Track(cid, plan(ch["topic"]), ev)
-            schema = r.schemas.get(ch["schema_id"], {}).get("value", {})
-            kind = rec_events.event_type(schema.get("name"), ch["message_encoding"])
-            if kind is not None:
-                event_kind[cid] = kind
+        if cid in lmap:
+            return
+        ch = r.channels[cid]["value"]
+        key = lmap[cid] = cid if ctx is None else ctx.channel(cid, r)
+        if key not in tracks:
+            tracks[key] = Track(key, plan(ch["topic"]), ev, ctx is not None)
+        schema = r.schemas.get(ch["schema_id"], {}).get("value", {})
+        kind = rec_events.event_type(schema.get("name"), ch["message_encoding"])
+        if kind is not None:
+            event_kind[cid] = kind
 
     def count_record() -> None:
         stats["records"] += 1
@@ -672,6 +748,10 @@ def scan_full(
                         r.unknown += 1
         r.sha256 = src.sha.hexdigest()
         r.stats["seconds"] = round(time.monotonic() - started, 3)
+        r.log_time_range = None if t_lo is None else (t_lo, t_hi)
+        if ctx is not None:
+            ctx.base += stats["messages"]
+            ctx.tracked = tracked
         return r
     except (ScanError, ValueError, OverflowError, MemoryError, struct.error) as e:
         r.log_time_range = None if t_lo is None else (t_lo, t_hi)

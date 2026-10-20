@@ -1,0 +1,60 @@
+rosbag2_bagfile_information:
+  version: 5
+  storage_identifier: mcap
+  duration:
+    nanoseconds: 20000000000
+  starting_time:
+    nanoseconds_since_epoch: 1760000000000000000
+  message_count: 5500
+  topics_with_message_count:
+    - topic_metadata:
+        name: /imu
+        type: sensor_msgs/msg/Imu
+        serialization_format: cdr
+        offered_qos_profiles: "- history: 3\n  depth: 0\n  reliability: 1\n  durability: 2\n  avoid_ros_namespace_conventions: false\n"
+      message_count: 4000
+    - topic_metadata:
+        name: /odom
+        type: nav_msgs/msg/Odometry
+        serialization_format: cdr
+        offered_qos_profiles: "- history: 3\n  depth: 0\n  reliability: 1\n  durability: 2\n  avoid_ros_namespace_conventions: false\n"
+      message_count: 1000
+    - topic_metadata:
+        name: /scan
+        type: sensor_msgs/msg/LaserScan
+        serialization_format: cdr
+        offered_qos_profiles: "- history: 3\n  depth: 0\n  reliability: 1\n  durability: 2\n  avoid_ros_namespace_conventions: false\n"
+      message_count: 200
+    - topic_metadata:
+        name: /camera/image/compressed
+        type: sensor_msgs/msg/CompressedImage
+        serialization_format: cdr
+        offered_qos_profiles: "- history: 3\n  depth: 0\n  reliability: 1\n  durability: 2\n  avoid_ros_namespace_conventions: false\n"
+      message_count: 300
+  compression_format: ""
+  compression_mode: ""
+  relative_file_paths:
+    - fleet-bag_0.mcap
+    - fleet-bag_1.mcap
+    - fleet-bag_2.mcap
+  files:
+    - path: fleet-bag_0.mcap
+      starting_time:
+        nanoseconds_since_epoch: 1760000000000000000
+      duration:
+        nanoseconds: 7000000000
+      message_count: 1926
+    - path: fleet-bag_1.mcap
+      starting_time:
+        nanoseconds_since_epoch: 1760000007000000000
+      duration:
+        nanoseconds: 7000000000
+      message_count: 1925
+    - path: fleet-bag_2.mcap
+      starting_time:
+        nanoseconds_since_epoch: 1760000014000000000
+      duration:
+        nanoseconds: 6000000000
+      message_count: 1649
+  custom_data: ~
+  ros_distro: humble

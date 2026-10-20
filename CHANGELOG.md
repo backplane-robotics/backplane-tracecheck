@@ -12,10 +12,13 @@ All notable changes to this project are documented here. The format follows
 - **Gaps explained by recorder events.** When a recording contains rosbag2_dynamic_recorder (dynrec) `PauseEvent` or `SubscriptionChangeEvent` messages, C07 lists gaps covered by a recorded pause or topic unsubscribe as *explained* (with `explained_gap_count` and `explained_gaps`); they don't fail. Unexplained gaps still fail. The events are the recorder's own account and are not verified. Only their action and topic name are read; all other payloads stay opaque. Applies to the `log_time` basis only. A new top-level `recorder_events` section summarises the events found.
 - `fleet-paused-zstd.mcap` synthetic example and "Paused recording (dynrec)" web demo.
 - FCC Covered List robot tracker page on the website (`/tools/covered-list-robots/`).
+- **ROS 2 bag folders.** `tracecheck check <folder>` and the web app (*Choose a bag folder*, or drop a folder) check a rosbag2 folder (`metadata.yaml` plus split `.mcap` files) as one recording. Channels are matched across files, so gaps, regressions and sequence breaks across file boundaries count. New check **C11 ROS 2 bag metadata agreement** compares the folder and the per-file, per-topic and total message counts with `metadata.yaml`; a listed file that is missing fails, and an unlisted `.mcap` warns and is not checked. A new `bag` report section lists each file with its size, SHA-256 and scan state; finding locations include a `file` key; `recovered` names the `incomplete_file`. Non-MCAP storage and rosbag2 file compression are refused (exit 2).
+- `fleet-bag/` and `fleet-bag-interrupted/` synthetic examples and web demos.
 
 ### Changed
 - Fast mode falls back to a full scan when the file doesn't end with the MCAP magic bytes, so incomplete files get the recovered summary.
 - Web demo list: the interrupted fleet recording replaces the small truncated demo; the dropout demo is correctly described as a lidar (`/scan`) outage.
+- Tracecheck page Pro note: "folder-based processing" now reads "checking many recordings at once", since checking one bag folder is free.
 
 ## [0.2.0] - 2026-10-14
 

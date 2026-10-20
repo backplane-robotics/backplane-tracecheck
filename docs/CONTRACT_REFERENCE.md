@@ -35,7 +35,7 @@ Omit rate/gap/interval/sequence requirements if their assumptions are unavailabl
 
 Multiple channels sharing a topic remain separate. A required topic can be present while one of its channels fails its count/encoding/timing requirement. This conservative behavior can produce findings for a zero-message channel; adapt the contract or investigate the recording rather than assuming channels share publishers or clocks.
 
-Absence has different meanings: required missing topic fails C02, while dependent channel checks skip because there is no channel to inspect. If the overall scan fails, C02–C10 all skip and C01 fails. If no requirement applies to a check, it skips. Skipped results do not establish health.
+Absence has different meanings: required missing topic fails C02, while dependent channel checks skip because there is no channel to inspect. If the overall scan fails, C02–C10 all skip and C01 fails. If no requirement applies to a check, it skips. Skipped results do not establish health. C11 applies only to bag folders (see below).
 
 The JSON report embeds the complete contract and hashes its normalized UTF-8 JSON (`sort_keys=True`, compact separators, Unicode preserved). The contract hash identifies effective content rather than the original indentation/byte layout. Reports also include the source byte SHA-256 and tool/reader/Python versions. Contracts and schema bytes are not executed.
 
@@ -46,3 +46,30 @@ The JSON report embeds the complete contract and hashes its normalized UTF-8 JSO
 - **Compression.** Chunks may be uncompressed, `zstd` or `lz4`. Decompressed output is capped at the chunk's declared uncompressed size. A mismatch, any other codec, or a chunk above the size limit fails C01.
 - **Fast mode** (`--fast` in the CLI, the toggle in the web app) reads only the header, footer and summary section (Statistics, Channel, Schema and indexed Metadata records) and checks the summary CRC. C01–C05 run on that information; C06–C10 skip because they need every timestamp. If the summary is missing or lacks Statistics, the scan falls back to a full scan and records `fast_mode_fallback` in the report. In fast mode `source.sha256` is `null`.
 - **Limits.** Defaults: 256 MiB per record, uncompressed chunk and summary section; 20 million tracked timestamps for sorted-gap checks; 10,000 schemas/channels/metadata records. Exceeding a limit fails C01 with an explanation, rather than exhausting memory. The CLI exposes `--max-chunk-mib`, `--max-record-mib`, `--max-tracked-messages` and `--timeout`. There is no overall file-size cap.
+
+## ROS 2 bag folders (C11)
+
+A rosbag2 recording can be a folder holding `metadata.yaml` and several `.mcap` files, split by size or duration. `tracecheck check <folder>` (or *Choose a bag folder* / dropping a folder in the web app) checks it as **one recording**. Only the folder's own files are read; subfolders are ignored.
+
+- **Which files.** With a readable `metadata.yaml`, the files are those it lists, in its order. Without one, every `.mcap` in the folder is used, in natural name order (`b_2` before `b_10`). An `.mcap` that is present but not listed is not scanned.
+- **One recording.** Channels from different files are matched by topic, message encoding and schema (name, encoding and bytes) and treated as one channel, so C05–C10 count gaps, regressions and sequence breaks across file boundaries. Finding locations in a bag report include a `file` key.
+- **Not supported.** Bags with non-MCAP storage (for example `sqlite3`) or rosbag2 file compression (`compression_mode: FILE`) are refused with exit code 2. More than 1,000 files is also refused. Per-message compression inside MCAP chunks is fine.
+- **`metadata.yaml`** is read with a small, bounded YAML-subset parser (up to 1 MiB) that covers what rosbag2 writes. Anything else is reported as unreadable rather than guessed at.
+
+C11 *ROS 2 bag metadata agreement* compares the folder and the scan with `metadata.yaml`:
+
+| Situation | Result |
+|---|---|
+| `metadata.yaml` read | pass finding |
+| `metadata.yaml` absent or unreadable | warn (rosbag2 writes it when a recording is closed; files were taken by name) |
+| A listed file is not in the folder | fail; C02–C10 skip and the scan is incomplete |
+| An `.mcap` in the folder is not listed | warn; that file is not checked |
+| Per-file, per-topic and total message counts | pass if equal to `metadata.yaml`, fail if not |
+| A topic has messages but is not listed | warn |
+| Scan incomplete | count comparisons skip |
+
+In fast mode the counts come from each file's Statistics record. If any file has no usable summary, the whole folder is scanned in full and `fast_mode_fallback` names that file.
+
+If a file ends before its MCAP footer, C01 fails, later files are not scanned, and `recovered` reports what was readable across the bag, with `incomplete_file` naming that file. The files alone cannot show why it is incomplete.
+
+Bag reports add a `bag` section: `folder`, `metadata` (`present`, `absent` or `unreadable`), `metadata_sha256`, and, when read, `ros_distro`, `storage_identifier`, `message_count_claimed` and `topics_claimed`. `bag.files` lists each file with `listed`, `present`, `messages_claimed`, `bytes`, `sha256`, `scan` (`complete`, `summary only`, `incomplete`, `error`, `not scanned`, `missing` or `not listed`) and `messages`. In a bag report `source.sha256` is `null`; each file's hash is in `bag.files`. A hash identifies the bytes that were read; it does not show where they came from.

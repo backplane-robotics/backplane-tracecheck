@@ -70,7 +70,7 @@ def _cdr_event(stamp_ns, *fields):
 
 
 def write_fleet_sample(path, seconds=60, compression=CompressionType.ZSTD, dropout=None, payload_scale=1,
-                       chunk_size=1024 * 1024, pauses=(), unsubscribed=()):
+                       chunk_size=1024 * 1024, pauses=(), unsubscribed=(), span=None):
     """A multi-topic, ROS 2-shaped synthetic recording (payloads are filler bytes, not real CDR).
 
     ``dropout`` = (topic, start_s, end_s) removes that topic's messages in the window to create a gap.
@@ -78,6 +78,8 @@ def write_fleet_sample(path, seconds=60, compression=CompressionType.ZSTD, dropo
     ``pauses`` = [(start_s, end_s)] and ``unsubscribed`` = [(topic, start_s, end_s)] remove messages
     like a dynrec recorder would, and write its PauseEvent / SubscriptionChangeEvent messages
     (real CDR, following the rosbag2_dynamic_recorder 0.2.0 message definitions).
+    ``span`` = (start_s, end_s) keeps only that slice of the recording, as one split file of a bag.
+    Returns the message count per topic.
     """
     start = 1_760_000_000_000_000_000  # fixed epoch, 2025-10-09
     rates = {'/imu': 200, '/odom': 50, '/scan': 10, '/camera/image/compressed': 15}
@@ -108,6 +110,8 @@ def write_fleet_sample(path, seconds=60, compression=CompressionType.ZSTD, dropo
                     continue
                 if any(u == topic and a * 1e9 <= i * period < b * 1e9 for u, a, b in unsubscribed):
                     continue
+                if span and not span[0] * 1e9 <= i * period < span[1] * 1e9:
+                    continue
                 events.append((t, topic, i, None))
         node = '/dynamic_recorder'
         if recorder:
@@ -132,6 +136,53 @@ def write_fleet_sample(path, seconds=60, compression=CompressionType.ZSTD, dropo
             else:
                 w.add_message(cids[topic], t, payload, t, sequence=seq)
         w.finish()
+    counts = {topic: 0 for topic, _ in types}
+    for _t, topic, _i, payload in events:
+        if payload is None:
+            counts[topic] += 1
+    return counts
+
+
+def write_bag_sample(folder, name, seconds=20, splits=(7, 14), metadata=True):
+    """A rosbag2-style bag folder: the fleet recording split by time into ``{name}_N.mcap`` files.
+
+    Each file registers its own schemas and channels, as rosbag2 does. ``metadata.yaml`` follows the
+    ROS 2 Humble layout (QoS profiles as one quoted string). Returns the file names in order.
+    """
+    folder = Path(folder)
+    folder.mkdir(exist_ok=True)
+    start = 1_760_000_000_000_000_000
+    bounds = [0, *splits, seconds]
+    files, totals = [], {}
+    for n, (a, b) in enumerate(zip(bounds, bounds[1:])):
+        fname = f'{name}_{n}.mcap'
+        counts = write_fleet_sample(folder/fname, seconds=seconds, span=(a, b))
+        files.append((fname, a, b, sum(counts.values())))
+        for topic, k in counts.items():
+            totals[topic] = totals.get(topic, 0) + k
+    if not metadata:
+        return [f[0] for f in files]
+    types = {'/imu': 'sensor_msgs/msg/Imu', '/odom': 'nav_msgs/msg/Odometry', '/scan': 'sensor_msgs/msg/LaserScan',
+             '/camera/image/compressed': 'sensor_msgs/msg/CompressedImage'}
+    qos = '"- history: 3\\n  depth: 0\\n  reliability: 1\\n  durability: 2\\n  avoid_ros_namespace_conventions: false\\n"'
+    lines = ['rosbag2_bagfile_information:', '  version: 5', '  storage_identifier: mcap',
+             '  duration:', f'    nanoseconds: {seconds * 1_000_000_000}',
+             '  starting_time:', f'    nanoseconds_since_epoch: {start}',
+             f'  message_count: {sum(totals.values())}', '  topics_with_message_count:']
+    for topic, kind in types.items():
+        lines += ['    - topic_metadata:', f'        name: {topic}', f'        type: {kind}',
+                  '        serialization_format: cdr', f'        offered_qos_profiles: {qos}',
+                  f'      message_count: {totals[topic]}']
+    lines += ['  compression_format: ""', '  compression_mode: ""', '  relative_file_paths:']
+    lines += [f'    - {f[0]}' for f in files]
+    lines += ['  files:']
+    for fname, a, b, k in files:
+        lines += [f'    - path: {fname}', '      starting_time:',
+                  f'        nanoseconds_since_epoch: {start + a * 1_000_000_000}',
+                  '      duration:', f'        nanoseconds: {(b - a) * 1_000_000_000}', f'      message_count: {k}']
+    lines += ['  custom_data: ~', '  ros_distro: humble', '']
+    (folder/'metadata.yaml').write_bytes('\n'.join(lines).encode('utf-8'))
+    return [f[0] for f in files]
 
 
 def generate(dest):
@@ -159,3 +210,10 @@ def generate(dest):
     # A dynrec-style recording: paused for 1 s, and the camera topic unsubscribed for 0.8 s.
     write_fleet_sample(dest/'fleet-paused-zstd.mcap', seconds=30, pauses=[(8, 9)],
                        unsubscribed=[('/camera/image/compressed', 20, 20.8)])
+    # A ROS 2 bag folder: metadata.yaml plus three split files, checked as one recording.
+    write_bag_sample(dest/'fleet-bag', 'fleet-bag')
+    # The same bag after a recorder stopped unexpectedly: no metadata.yaml, last file cut off.
+    names = write_bag_sample(dest/'fleet-bag-interrupted', 'fleet-bag-interrupted', metadata=False)
+    last = dest/'fleet-bag-interrupted'/names[-1]
+    data = last.read_bytes()
+    last.write_bytes(data[:len(data) * 60 // 100])

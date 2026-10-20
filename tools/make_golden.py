@@ -7,7 +7,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from tracecheck.engine import analyze_file
+from tracecheck.engine import analyze_bag, analyze_file
 from tracecheck.samples import generate
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,16 +24,24 @@ CASES = [(f"{n}.mcap", "demo-contract.json", False) for n in DEMO] + [
     ("fleet-paused-zstd.mcap", "fleet-contract.json", False),
     ("fleet-paused-zstd.mcap", "fleet-contract.json", True),
 ]
+# ROS 2 bag folders, checked as one recording each.
+BAGS = [
+    ("fleet-bag", "fleet-contract.json", False),
+    ("fleet-bag", "fleet-contract.json", True),
+    ("fleet-bag-interrupted", "fleet-contract.json", False),
+]
 
 
 def main():
     cases = []
     with tempfile.TemporaryDirectory() as td:
         generate(Path(td))
-        for name, contract, fast in CASES:
+        for name, contract, fast, bag in [(*x, False) for x in CASES] + [(*x, True) for x in BAGS]:
             c = json.loads((Path(td) / contract).read_text(encoding="utf-8"))
-            r = analyze_file(Path(td) / name, c, fast=fast)
+            r = (analyze_bag if bag else analyze_file)(Path(td) / name, c, fast=fast)
             case = {"file": name, "contract": contract}
+            if bag:
+                case["bag"] = True
             if fast:
                 case["fast"] = True
             case.update(overall=r["overall"], scan_complete=r["scan_complete"],
