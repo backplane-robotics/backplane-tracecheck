@@ -70,6 +70,7 @@ p { margin: 0 0 1em; }
 }
 .eyebrow::before { content: ''; width: 22px; height: 1px; background: currentColor; }
 .lead { font-size: clamp(1.05rem, 1.6vw, 1.25rem); color: var(--muted); max-width: 62ch; }
+.product-subtitle { margin: 10px 0 18px; font: 500 clamp(1rem, 1.5vw, 1.15rem)/1.4 var(--mono); letter-spacing: 0.02em; color: var(--teal); }
 .muted { color: var(--muted); }
 .mono { font-family: var(--mono); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

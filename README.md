@@ -1,6 +1,6 @@
 # Backplane Tracecheck
 
-**Check robot recordings against an explicit recording contract.**
+**Vendor-neutral recording integrity checks.** Check robot recordings against an explicit recording contract.
 
 Tracecheck reads an [MCAP](https://mcap.dev) recording (the default ROS 2 bag format) and checks it against a small JSON *recording contract*: which topics must be present, their schemas and encodings, message counts, rates, timestamp gaps, regressions, sequence continuity and time coverage. It produces a JSON report and a readable HTML report. Findings include relevant file locations where available; missing items are reported as gaps.
 
@@ -62,7 +62,7 @@ Write a manifest where the recording was made, then check the copy after upload,
 
 ```bash
 tracecheck manifest examples/fleet-bag --out fleet-bag.manifest.json
-# ...copy the folder and the manifest somewhere else...
+# ...copy the folder and the manifest somewhere else, then (replace the path with your copy's location):
 tracecheck verify /mnt/archive/fleet-bag --manifest fleet-bag.manifest.json
 ```
 
