@@ -1,4 +1,4 @@
-"""Command-line interface: ``tracecheck check | validate-contract | samples | serve``."""
+"""Command-line interface: ``tracecheck check | manifest | verify | validate-contract | samples | serve``."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 
 from . import __version__
 from .contract import ContractError, loads
-from .engine import analyze_file
+from .engine import analyze_bag, analyze_file
 from .reader import MiB, Limits
 from .report import render
 
@@ -31,8 +31,9 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
 
-    check = sub.add_parser("check", help="check a recording and write JSON + HTML reports")
-    check.add_argument("recording", type=Path)
+    check = sub.add_parser("check", help="check a recording (an .mcap file or a ROS 2 bag folder) and write JSON + "
+                                          "HTML reports")  # fmt: skip
+    check.add_argument("recording", type=Path, help="an .mcap file, or a ROS 2 bag folder (metadata.yaml + .mcap files)")
     check.add_argument("--contract", type=Path, required=True)
     check.add_argument("--out", type=Path, required=True, help="new output directory; existing files are never overwritten")
     check.add_argument("--fast", action="store_true",
@@ -52,6 +53,18 @@ def _parser() -> argparse.ArgumentParser:
 
     v = sub.add_parser("validate-contract", help="validate a contract file")
     v.add_argument("contract", type=Path)
+
+    mf = sub.add_parser("manifest", help="write a manifest of a recording: SHA-256 and size per file, message count "
+                                         "per topic")  # fmt: skip
+    mf.add_argument("recording", type=Path, help="an .mcap file or a ROS 2 bag folder")
+    mf.add_argument("--out", type=Path, required=True, help="new manifest file (.json); never overwritten")
+    mf.add_argument("--quiet", action="store_true", help="no progress output")
+
+    vf = sub.add_parser("verify", help="check a copy of a recording against a manifest")
+    vf.add_argument("recording", type=Path, help="the copy: an .mcap file or a ROS 2 bag folder")
+    vf.add_argument("--manifest", type=Path, required=True)
+    vf.add_argument("--json", type=Path, help="also write the result as JSON to this new file")
+    vf.add_argument("--quiet", action="store_true", help="no progress output")
 
     s = sub.add_parser("serve", help="local browser UI on 127.0.0.1 (files up to 64 MiB)")
     s.add_argument("--port", type=int, default=8765)
@@ -81,12 +94,15 @@ def main(argv: list[str] | None = None) -> int:
             generate(args.dest)
             print(f"Synthetic examples ready in {args.dest}/")
             return EXIT_PASS
+        if args.command in ("manifest", "verify"):
+            return _manifest_command(args)
         contract = _load_contract(args.contract)
         if args.command == "validate-contract":
             print("Contract valid:", contract["name"])
             return EXIT_PASS
-        if not args.recording.is_file():
-            raise ValueError("recording must be a regular file")
+        is_bag = args.command == "check" and args.recording.is_dir()
+        if not is_bag and not args.recording.is_file():
+            raise ValueError("recording must be a regular file or a ROS 2 bag folder")
         if args.command == "_worker":
             from .server import UPLOAD_LIMIT
 
@@ -111,13 +127,22 @@ def main(argv: list[str] | None = None) -> int:
             def progress(done: int, total: int) -> None:
                 print(f"\r  scanned {done / MiB:,.0f} / {total / MiB:,.0f} MiB ({100 * done / max(total, 1):.0f}%)",
                       end="", file=sys.stderr, flush=True)  # fmt: skip
-        r = analyze_file(args.recording, contract, fast=args.fast, limits=limits, progress=progress)
+        analyze = analyze_bag if is_bag else analyze_file
+        r = analyze(args.recording, contract, fast=args.fast, limits=limits, progress=progress)
         if progress is not None:
             print(file=sys.stderr)
         args.out.mkdir(parents=True, exist_ok=False)
         (args.out / "report.json").write_text(json.dumps(r, indent=2, ensure_ascii=False), encoding="utf-8")
         (args.out / "report.html").write_text(render(r), encoding="utf-8")
         note = f" | fast mode fell back to full scan: {r['fast_mode_fallback']}" if "fast_mode_fallback" in r else ""
+        if "bag" in r:
+            bag = r["bag"]
+            scanned = sum(1 for f in bag["files"] if f["scan"] in ("complete", "summary only"))
+            note += f" | bag: {scanned} of {len(bag['files'])} files scanned, metadata.yaml {bag['metadata']}"
+        if "recovered" in r:
+            rec = r["recovered"]
+            span = "" if rec["log_time_span_ns"] is None else f" over {rec['log_time_span_ns'] / 1e9:.3f} s"
+            note += f" | recording incomplete: {rec['messages']} messages recovered{span}"
         print(f"{r['overall'].upper()} | mode={r['scan_mode']} | scan_complete={r['scan_complete']} | "
               f"{r['status_counts']} | reports: {args.out}{note}")  # fmt: skip
         failing = {"warn": ("skipped", "warn", "fail"), "fail": ("fail",)}[args.fail_on]
@@ -125,6 +150,57 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return EXIT_ERROR
+
+
+def _progress(quiet: bool):
+    if quiet or not sys.stderr.isatty():
+        return None
+
+    def progress(done: int, total: int) -> None:
+        print(f"\r  scanned {done / MiB:,.0f} / {total / MiB:,.0f} MiB ({100 * done / max(total, 1):.0f}%)",
+              end="", file=sys.stderr, flush=True)  # fmt: skip
+
+    return progress
+
+
+def _manifest_command(args) -> int:
+    from . import manifest as mf
+
+    progress = _progress(args.quiet)
+    if args.command == "manifest":
+        if args.out.exists():
+            raise ValueError("manifest file already exists; choose a new --out path")
+        m = mf.build(args.recording, progress)
+        if progress is not None:
+            print(file=sys.stderr)
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        with args.out.open("x", encoding="utf-8") as f:
+            f.write(json.dumps(m, indent=2, ensure_ascii=False))
+        counts = "message counts recorded" if m["topics"] is not None else "no message counts: the scan was incomplete"
+        print(f"Manifest written: {args.out} | {len(m['files'])} file(s) | {counts}")
+        return EXIT_PASS
+    if args.json is not None and args.json.exists():
+        raise ValueError("--json file already exists; choose a new path")
+    r = mf.verify(args.recording, mf.load(args.manifest), progress, args.manifest)
+    if progress is not None:
+        print(file=sys.stderr)
+    for row in r["files"]:
+        print(f"  {row['status'].upper():8} {row['name']}")
+    if r["topics"] is not None:
+        diff = [t for t in r["topics"] if t["status"] != "match"]
+        print(f"  topics: {len(r['topics']) - len(diff)} of {len(r['topics'])} message counts match")
+        for t in diff:
+            print(f"    {t['topic']}: expected {t['expected']}, found {t['observed']}")
+    else:
+        print("  topics: message counts not compared (missing from the manifest, or the scan was incomplete)")
+    if r["status"] == "match":
+        print("MATCH | every file has the same bytes (SHA-256) as when the manifest was written")
+    else:
+        print("DIFFERENT | some files are changed, missing or extra; see above")
+    if args.json is not None:
+        with args.json.open("x", encoding="utf-8") as f:
+            f.write(json.dumps(r, indent=2, ensure_ascii=False))
+    return EXIT_PASS if r["status"] == "match" else EXIT_FINDINGS
 
 
 if __name__ == "__main__":

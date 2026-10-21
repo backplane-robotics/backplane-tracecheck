@@ -1,10 +1,12 @@
 // Strict, bounded, streaming MCAP reader: a port of src/tracecheck/reader.py.
 // Reads a Blob/File sequentially with Blob.slice(), so multi-GB recordings never have to fit
-// in memory. SHA-256 and the MCAP CRCs are computed on the fly. Payloads are never decoded.
+// in memory. SHA-256 and the MCAP CRCs are computed on the fly. Payloads are not decoded, except
+// recognised recorder event messages (events.js), from which only an action and topic name are read.
 
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { crc32 } from './crc32.js';
+import { EVENT_LIMIT, NOTE, decode as decodeEvent, eventType } from './events.js';
 import { lz4Decompress } from './lz4.js';
 import { decompressInto } from './vendor/fzstd.js';
 
@@ -39,6 +41,12 @@ export class ScanError extends Error {
 export class ScanTimeout extends ScanError {
   get name() {
     return 'ScanTimeout';
+  }
+}
+/** The file ends before its MCAP structure is complete. See ScanTruncated in reader.py. */
+export class ScanTruncated extends ScanError {
+  get name() {
+    return 'ScanTruncated';
   }
 }
 
@@ -192,9 +200,9 @@ class Grow {
   }
 }
 
-/** Incremental per-channel statistics; see reader.py Track. Messages are [ord, a, b, log, pub, seq]. */
+/** Incremental per-channel statistics; see reader.py Track. Messages are [ord, a, b, log, pub, seq, fileOrNull]. */
 export class Track {
-  constructor(cid, cfg, evidence) {
+  constructor(cid, cfg, evidence, bag = false) {
     this.cid = cid;
     this.cfg = cfg;
     this.ev = evidence;
@@ -211,6 +219,7 @@ export class Track {
       this.locA = new Grow(Float64Array);
       this.locB = new Grow(Float64Array);
     } else this.times = null;
+    this.files = this.times && bag ? [] : null; // file name per stored message (bags only)
   }
   add(m) {
     this.count++;
@@ -243,28 +252,40 @@ export class Track {
       this.ords.push(m[0]);
       this.locA.push(m[1]);
       this.locB.push(m[2]);
+      if (this.files) this.files.push(m[6]);
     }
   }
-  /** [sample, total]; sample items are [a, b, gap] where a/b are messages (in-order) or indices. */
-  sortedGaps() {
+  /**
+   * [sample, total, explained, explainedTotal]. Sample items are [a, b, gap] where a/b are messages
+   * (in-order, no explain) or indices; explained items add the labels from `explain` as a fourth item.
+   */
+  sortedGaps(explain = null) {
     const k = this.cfg.basisLog ? 3 : 4;
-    if (this.monotonic) return [this.gapBad.map(([a, b]) => [a, b, b[k] - a[k]]), this.gapBadN];
+    if (this.monotonic && explain === null) return [this.gapBad.map(([a, b]) => [a, b, b[k] - a[k]]), this.gapBadN, [], 0];
     const times = this.times.a;
     const n = this.times.n;
     const order = Array.from({ length: n }, (_, i) => i);
-    order.sort((x, y) => (times[x] < times[y] ? -1 : times[x] > times[y] ? 1 : x - y));
+    if (!this.monotonic) order.sort((x, y) => (times[x] < times[y] ? -1 : times[x] > times[y] ? 1 : x - y));
     const sample = [];
+    const explained = [];
     let total = 0;
+    let explainedN = 0;
     for (let i = 1; i < n; i++) {
       const a = order[i - 1];
       const b = order[i];
       const g = times[b] - times[a];
       if (g > this.cfg.maxGap) {
+        const why = explain !== null ? explain(times[a], times[b]) : null;
+        if (why) {
+          explainedN++;
+          if (explained.length < this.ev) explained.push([a, b, g, why]);
+          continue;
+        }
         total++;
         if (sample.length < this.ev) sample.push([a, b, g]);
       }
     }
-    return [sample, total];
+    return [sample, total, explained, explainedN];
   }
 }
 
@@ -276,7 +297,8 @@ function mapEquals(a, b) {
 
 function newResult(mode, size) {
   return { mode, size, sha256: null, profile: null, schemas: new Map(), channels: new Map(), metadata: [],
-    tracks: new Map(), counts: null, crc: {}, compression: {}, unknown: 0, stats: {}, fastFallback: null };
+    tracks: new Map(), counts: null, crc: {}, compression: {}, unknown: 0, stats: {}, fastFallback: null,
+    completeBytes: 0, dataEndSeen: false, logTimeRange: null, recorderEvents: null, events: [] };
 }
 
 class Registry {
@@ -319,6 +341,60 @@ class Registry {
   }
 }
 
+/** Joins the split files of one ROS 2 bag into one recording. See BagContext in reader.py. */
+export class BagContext {
+  constructor(names, limits) {
+    this.names = names;
+    this.limits = limits;
+    this.name = null; // file being scanned
+    this.base = 0; // messages in earlier files
+    this.tracked = 0;
+    this.schemas = new Map();
+    this.channels = new Map();
+    this.tracks = new Map();
+    this.cmap = new Map(); // current file: channel id -> logical id
+    this.schemaKeys = new Map();
+    this.channelKeys = new Map();
+  }
+  startFile(i) {
+    this.name = this.names[i];
+    this.cmap = new Map();
+  }
+  loc(loc) {
+    return { file: this.name, ...loc };
+  }
+  schema(sid, schemas) {
+    if (!sid) return 0;
+    const x = schemas.get(sid);
+    const v = x.value;
+    const key = JSON.stringify([v.name, v.encoding, v.sha256]);
+    let lid = this.schemaKeys.get(key);
+    if (lid === undefined) {
+      lid = this.schemas.has(sid) ? Math.max(...this.schemas.keys()) + 1 : sid;
+      this.schemaKeys.set(key, lid);
+      this.schemas.set(lid, { value: v, location: this.loc(x.location) });
+    }
+    return lid;
+  }
+  /** Map channel `cid` of the current file (already in `r`) to its logical id. */
+  channel(cid, r) {
+    const x = r.channels.get(cid);
+    const v = x.value;
+    const sid = this.schema(v.schema_id, r.schemas);
+    const key = JSON.stringify([v.topic, v.message_encoding, sid]);
+    let lid = this.channelKeys.get(key);
+    if (lid === undefined) {
+      lid = this.channels.has(cid) ? Math.max(...this.channels.keys()) + 1 : cid;
+      this.channelKeys.set(key, lid);
+      this.channels.set(lid, { value: { ...v, schema_id: sid }, location: this.loc(x.location) });
+      const n = this.limits.max_entities;
+      if (this.channels.size > n || this.schemas.size > n) throw new ScanError(`channel/schema count across the bag exceeds ${n}`);
+    }
+    this.cmap.set(cid, lid);
+    return lid;
+  }
+}
+
 /** Sequential Blob reader that hashes every byte once (at load) and CRCs consumed bytes. */
 class Source {
   constructor(blob, progress) {
@@ -336,13 +412,13 @@ class Source {
     return this.pos + n <= this.bufStart + this.buf.length;
   }
   async fill(n) {
-    if (n < 0 || n > this.size - this.pos) throw new ScanError('record extends beyond end of file');
+    if (n < 0 || n > this.size - this.pos) throw new ScanTruncated('record extends beyond end of file');
     const need = this.pos + n - this.loaded;
     if (need > 0) {
       const start = this.loaded;
       const end = Math.min(this.size, start + Math.max(8 * MiB, need));
       const bytes = new Uint8Array(await this.blob.slice(start, end).arrayBuffer());
-      if (bytes.length !== end - start) throw new ScanError('unexpected end of file');
+      if (bytes.length !== end - start) throw new ScanTruncated('unexpected end of file');
       this.sha.update(bytes);
       this.loaded = end;
       const tail = this.buf.subarray(this.pos - this.bufStart);
@@ -369,7 +445,7 @@ class Source {
     return this.take(n);
   }
   async skip(n) {
-    if (n < 0 || n > this.size - this.pos) throw new ScanError('record extends beyond end of file');
+    if (n < 0 || n > this.size - this.pos) throw new ScanTruncated('record extends beyond end of file');
     while (n > 0) {
       const step = Math.min(n, 4 * MiB);
       await this.read(step);
@@ -393,7 +469,7 @@ class Source {
 
 // ----------------------------------------------------------------------------- full scan
 
-export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = null) {
+export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = null, ctx = null) {
   const started = performance.now();
   const size = blob.size;
   const r = newResult('full', size);
@@ -402,30 +478,65 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
   const src = new Source(blob, progress);
   const stats = { records: 0, messages: 0, unchunked_messages: 0, chunks: 0, attachments_skipped: 0 };
   r.stats = stats;
+  if (ctx) r.tracks = ctx.tracks;
   const tracks = r.tracks;
+  const lmap = new Map(); // channel id -> track key (the logical id in a bag)
+  const base = ctx ? ctx.base : 0;
+  const fname = ctx ? ctx.name : null;
   const ev = limits.evidence_per_finding;
-  let tracked = 0;
+  let tracked = ctx ? ctx.tracked : 0;
   let ended = false;
   let headerSeen = false;
   let summaryCrcStart = null;
+  let tLo = null;
+  let tHi = null;
+  const eventKind = new Map(); // channel id -> recognised recorder event type
+
+  const onEvent = (kind, buf, body, end, logT) => {
+    let info = r.recorderEvents;
+    if (info === null) {
+      info = r.recorderEvents = { recorder: 'rosbag2_dynamic_recorder (dynrec)', message_counts: {}, decoded: 0, undecodable: 0,
+        limit_reached: false, note: NOTE };
+    }
+    info.message_counts[kind] = (info.message_counts[kind] || 0) + 1;
+    if (kind !== 'PauseEvent' && kind !== 'SubscriptionChangeEvent') return;
+    const got = decodeEvent(kind, buf.subarray(body + 22, end));
+    if (got === null) info.undecodable++;
+    else if (r.events.length >= EVENT_LIMIT) info.limit_reached = true;
+    else {
+      info.decoded++;
+      r.events.push([logT, base + stats.messages, got[0], got[1], got[2]]);
+    }
+  };
 
   const onMessage = (buf, dv, body, end, a, b) => {
     if (end - body < 22) throw new ScanError('message record too short');
     const cid = dv.getUint16(body, true);
-    const tr = tracks.get(cid);
+    const tr = tracks.get(lmap.get(cid));
     if (ended || tr === undefined) throw new ScanError('message after DataEnd or undefined channel');
     if (++stats.messages > limits.max_messages) throw new ScanError(`message count exceeds ${limits.max_messages}`);
+    const logT = dv.getBigUint64(body + 6, true);
+    if (tLo === null || logT < tLo) tLo = logT;
+    if (tHi === null || logT > tHi) tHi = logT;
+    const kind = eventKind.get(cid);
+    if (kind !== undefined) onEvent(kind, buf, body, end, logT);
     if (tr.cfg === null) {
       tr.count++;
       return;
     }
     if (tr.times && ++tracked > limits.max_tracked_messages)
       throw new ScanError(`gap-check timestamp storage exceeds ${limits.max_tracked_messages} messages; raise the max_tracked_messages limit`);
-    tr.add([stats.messages, a, b, dv.getBigUint64(body + 6, true), dv.getBigUint64(body + 14, true), dv.getUint32(body + 2, true)]);
+    tr.add([base + stats.messages, a, b, logT, dv.getBigUint64(body + 14, true), dv.getUint32(body + 2, true), fname]);
   };
   const onChannel = (c, loc) => {
     const cid = reg.channel(c, loc);
-    if (!tracks.has(cid)) tracks.set(cid, new Track(cid, plan(r.channels.get(cid).value.topic), ev));
+    if (lmap.has(cid)) return;
+    const ch = r.channels.get(cid).value;
+    const key = ctx ? ctx.channel(cid, r) : cid;
+    lmap.set(cid, key);
+    if (!tracks.has(key)) tracks.set(key, new Track(key, plan(ch.topic), ev, ctx !== null));
+    const kind = eventType(r.schemas.get(ch.schema_id)?.value?.name, ch.message_encoding);
+    if (kind !== null) eventKind.set(cid, kind);
   };
   const countRecord = () => {
     if (++stats.records > limits.max_records) throw new ScanError('record count exceeds limit');
@@ -436,7 +547,8 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
   try {
     if (size < 8 || !same(await src.read(8), MAGIC)) throw new ScanError('not an MCAP file (bad magic)');
     for (;;) {
-      if (size - src.pos < 9) throw new ScanError('unexpected end of file (missing footer)');
+      r.completeBytes = src.pos;
+      if (size - src.pos < 9) throw new ScanTruncated('unexpected end of file (missing footer)');
       const crcBefore = src.crc;
       const offset = src.pos;
       const head = await src.read(9);
@@ -487,6 +599,7 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
       } else if (op === OP.DATA_END) {
         if (ended) throw new ScanError('repeated DataEnd');
         ended = true;
+        r.dataEndSeen = true;
         const dataCrc = c.u32();
         if (dataCrc && dataCrc !== crcBefore) throw new ScanError('data section CRC mismatch');
         r.crc.data_section = dataCrc ? 'verified' : 'absent';
@@ -531,8 +644,14 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
     }
     r.sha256 = bytesToHex(src.sha.digest());
     r.stats.seconds = Math.round(performance.now() - started) / 1000;
+    r.logTimeRange = tLo === null ? null : [tLo, tHi];
+    if (ctx) {
+      ctx.base += stats.messages;
+      ctx.tracked = tracked;
+    }
     return r;
   } catch (e) {
+    r.logTimeRange = tLo === null ? null : [tLo, tHi];
     const err = e instanceof ScanError ? e : new ScanError(`${e && e.name}: ${e && e.message}`);
     const drained = !(e instanceof ScanTimeout) && !(e instanceof RangeError) && (await src.drain());
     r.sha256 = drained || src.loaded === size ? bytesToHex(src.sha.digest()) : null;
@@ -568,7 +687,10 @@ export async function scanFast(blob, limits = DEFAULT_LIMITS) {
 
   const footerAt = size - 8 - FOOTER_RECORD_SIZE;
   const tail = await readAt(footerAt, FOOTER_RECORD_SIZE + 8);
-  if (!same(tail.subarray(-8), MAGIC)) throw new ScanError('missing trailing magic');
+  if (!same(tail.subarray(-8), MAGIC)) {
+    r.fastFallback = 'file does not end with the MCAP magic bytes (it may be incomplete)';
+    return r;
+  }
   const tc = new Cursor(tail, 1);
   if (tail[0] !== OP.FOOTER || tc.u64() !== 20n) {
     r.fastFallback = 'footer is not at the standard position';

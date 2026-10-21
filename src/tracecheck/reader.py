@@ -11,7 +11,8 @@ and so the browser implementation in ``web/`` can mirror it exactly.
 * Fast mode reads only the header, footer and summary section (plus indexed
   metadata records), so multi-GB files are inventoried in milliseconds.
 
-Message payloads are never decoded.
+Message payloads are not decoded, except recognised recorder event messages (see
+``events.py``), from which only an action and a topic name are read.
 """
 
 from __future__ import annotations
@@ -24,6 +25,8 @@ import zlib
 from array import array
 from dataclasses import dataclass, field
 from typing import BinaryIO, Callable
+
+from . import events as rec_events
 
 MAGIC = b"\x89MCAP0\r\n"
 (
@@ -80,6 +83,14 @@ class ScanError(ValueError):
 
 class ScanTimeout(ScanError):
     """The configured wall-clock limit was reached."""
+
+
+class ScanTruncated(ScanError):
+    """The file ends before its MCAP structure is complete (for example, no footer).
+
+    A recording that stopped unexpectedly, a file cut off during copying, or a corrupted
+    record length all look like this; the file alone cannot tell them apart.
+    """
 
 
 # --------------------------------------------------------------------------- parsing
@@ -243,10 +254,10 @@ class Track:
     __slots__ = (
         "cid", "cfg", "ev", "count", "first", "last", "lo", "hi", "monotonic",
         "seq_bad", "seq_bad_n", "reg_bad", "reg_bad_n", "gap_bad", "gap_bad_n",
-        "times", "ords", "loc_a", "loc_b",
+        "times", "ords", "loc_a", "loc_b", "files",
     )  # fmt: skip
 
-    def __init__(self, cid: int, cfg: TrackConfig | None, evidence_limit: int):
+    def __init__(self, cid: int, cfg: TrackConfig | None, evidence_limit: int, bag: bool = False):
         self.cid = cid
         self.cfg = cfg
         self.ev = evidence_limit
@@ -262,9 +273,10 @@ class Track:
         self.ords = array("Q") if gap else None
         self.loc_a = array("q") if gap else None
         self.loc_b = array("q") if gap else None
+        self.files: list | None = [] if gap and bag else None  # file name per stored message (bags only)
 
     def add(self, m: tuple) -> None:
-        """``m`` is ``(ordinal, loc_a, loc_b, log_time, publish_time, sequence)``."""
+        """``m`` is ``(ordinal, loc_a, loc_b, log_time, publish_time, sequence, file_name_or_None)``."""
         self.count += 1
         cfg = self.cfg
         k = 3 if cfg.basis_log else 4
@@ -297,27 +309,40 @@ class Track:
             self.ords.append(m[0])
             self.loc_a.append(m[1])
             self.loc_b.append(m[2])
+            if self.files is not None:
+                self.files.append(m[6])
 
-    def sorted_gaps(self) -> tuple[list, int]:
-        """Return (evidence sample, total) of sorted-adjacent gaps above ``max_gap``.
+    def sorted_gaps(self, explain: Callable[[int, int], list | None] | None = None) -> tuple[list, int, list, int]:
+        """Return (sample, total, explained sample, explained total) of sorted-adjacent gaps above ``max_gap``.
 
-        Each sample item is ``(prev_index, cur_index, gap)`` into the stored arrays,
-        or, for the in-order fast path, ``(prev_msg, cur_msg, gap)`` tuples.
+        Each sample item is ``(prev_index, cur_index, gap)`` into the stored arrays, or, for the
+        in-order fast path without ``explain``, ``(prev_msg, cur_msg, gap)`` tuples. When ``explain``
+        is given, items are always index-based, and gaps it explains are counted separately with
+        its labels as a fourth item.
         """
         k = 3 if self.cfg.basis_log else 4
-        if self.monotonic:
-            return [(a, b, b[k] - a[k]) for a, b in self.gap_bad], self.gap_bad_n
+        if self.monotonic and explain is None:
+            return [(a, b, b[k] - a[k]) for a, b in self.gap_bad], self.gap_bad_n, [], 0
         times, limit = self.times, self.cfg.max_gap
-        order = sorted(range(len(times)), key=times.__getitem__)  # stable: ties keep file order
-        sample, total = [], 0
+        if self.monotonic:
+            order = range(len(times))
+        else:
+            order = sorted(range(len(times)), key=times.__getitem__)  # stable: ties keep file order
+        sample, total, explained, explained_n = [], 0, [], 0
         for i in range(1, len(order)):
             a, b = order[i - 1], order[i]
             g = times[b] - times[a]
             if g > limit:
+                why = explain(times[a], times[b]) if explain is not None else None
+                if why:
+                    explained_n += 1
+                    if len(explained) < self.ev:
+                        explained.append((a, b, g, why))
+                    continue
                 total += 1
                 if len(sample) < self.ev:
                     sample.append((a, b, g))
-        return sample, total
+        return sample, total, explained, explained_n
 
 
 # --------------------------------------------------------------------------- results
@@ -339,6 +364,13 @@ class ScanResult:
     unknown: int = 0
     stats: dict = field(default_factory=dict)
     fast_fallback: str | None = None
+    # Full scan only. Used to describe how much of a cut-off file was readable.
+    complete_bytes: int = 0  # end offset of the last complete top-level record
+    data_end_seen: bool = False
+    log_time_range: tuple[int, int] | None = None  # min and max log_time over all messages read
+    # Full scan only. Recognised recorder event messages; None when the recording has none.
+    recorder_events: dict | None = None
+    events: list = field(default_factory=list)  # (log_time, ordinal, kind, action, topic)
 
 
 class _Registry:
@@ -378,6 +410,66 @@ class _Registry:
         self._bound()
 
 
+class BagContext:
+    """Joins the split files of one ROS 2 bag into one recording.
+
+    Each file has its own channel and schema ids. Channels are matched across files by topic,
+    message encoding and schema (name, encoding and SHA-256 of the schema data); a logical id
+    keeps the first file's id when it is free. Tracks, message ordinals and the gap-tracking
+    budget carry over from file to file, so gaps and sequence breaks at file boundaries count.
+    """
+
+    def __init__(self, names: list[str], limits: Limits):
+        self.names = names
+        self.limits = limits
+        self.name: str | None = None  # file being scanned
+        self.base = 0  # messages in earlier files
+        self.tracked = 0
+        self.schemas: dict = {}
+        self.channels: dict = {}
+        self.tracks: dict = {}
+        self.cmap: dict[int, int] = {}  # current file: channel id -> logical id
+        self._schema_keys: dict = {}
+        self._channel_keys: dict = {}
+
+    def start_file(self, i: int) -> None:
+        self.name = self.names[i]
+        self.cmap = {}
+
+    def _loc(self, loc: dict) -> dict:
+        return {"file": self.name, **loc}
+
+    def _schema(self, sid: int, schemas: dict) -> int:
+        if not sid:
+            return 0
+        x = schemas[sid]
+        v = x["value"]
+        key = (v["name"], v["encoding"], v["sha256"])
+        lid = self._schema_keys.get(key)
+        if lid is None:
+            lid = sid if sid not in self.schemas else max(self.schemas) + 1
+            self._schema_keys[key] = lid
+            self.schemas[lid] = {"value": v, "location": self._loc(x["location"])}
+        return lid
+
+    def channel(self, cid: int, r: ScanResult) -> int:
+        """Map channel ``cid`` of the current file (already in ``r``) to its logical id."""
+        x = r.channels[cid]
+        v = x["value"]
+        sid = self._schema(v["schema_id"], r.schemas)
+        key = (v["topic"], v["message_encoding"], sid)
+        lid = self._channel_keys.get(key)
+        if lid is None:
+            lid = cid if cid not in self.channels else max(self.channels) + 1
+            self._channel_keys[key] = lid
+            self.channels[lid] = {"value": dict(v, schema_id=sid), "location": self._loc(x["location"])}
+            n = self.limits.max_entities
+            if len(self.channels) > n or len(self.schemas) > n:
+                raise ScanError(f"channel/schema count across the bag exceeds {n}")
+        self.cmap[cid] = lid
+        return lid
+
+
 class _Source:
     """Sequential, strictly bounded file reader that hashes and CRCs every byte."""
 
@@ -392,10 +484,10 @@ class _Source:
 
     def read(self, n: int) -> bytes:
         if n < 0 or n > self.size - self.pos:
-            raise ScanError("record extends beyond end of file")
+            raise ScanTruncated("record extends beyond end of file")
         data = self.f.read(n)
         if len(data) != n:
-            raise ScanError("unexpected end of file")
+            raise ScanTruncated("unexpected end of file")
         self.pos += n
         self.sha.update(data)
         self.crc = zlib.crc32(data, self.crc)
@@ -406,7 +498,7 @@ class _Source:
 
     def skip(self, n: int) -> None:
         if n < 0 or n > self.size - self.pos:
-            raise ScanError("record extends beyond end of file")
+            raise ScanTruncated("record extends beyond end of file")
         while n:
             step = min(n, 4 * MiB)
             self.read(step)
@@ -429,8 +521,13 @@ def scan_full(
     plan: Callable[[str], TrackConfig | None],
     limits: Limits | None = None,
     progress: Callable[[int, int], None] | None = None,
+    ctx: BagContext | None = None,
 ) -> ScanResult:
-    """Read every record. Raises ScanError (with ``.result`` partially filled) on failure."""
+    """Read every record. Raises ScanError (with ``.result`` partially filled) on failure.
+
+    With ``ctx`` the file is one part of a bag: tracks live in ``ctx`` and are keyed by logical
+    channel id, and ordinals continue from earlier files.
+    """
     limits = limits or Limits()
     started = time.monotonic()
     r = ScanResult(mode="full", size=size)
@@ -446,24 +543,57 @@ def scan_full(
     src = _Source(f, size, progress)
     stats = {"records": 0, "messages": 0, "unchunked_messages": 0, "chunks": 0, "attachments_skipped": 0}
     r.stats = stats
+    if ctx is not None:
+        r.tracks = ctx.tracks
     tracks = r.tracks
-    tracked = 0
+    lmap: dict[int, int] = {}  # channel id -> track key (the logical id in a bag)
+    base = ctx.base if ctx is not None else 0
+    fname = ctx.name if ctx is not None else None
+    tracked = ctx.tracked if ctx is not None else 0
     ev = limits.evidence_per_finding
     ended = False
     header_seen = False
     summary_crc_start = None
+    t_lo = t_hi = None
+    event_kind: dict[int, str] = {}  # channel id -> recognised recorder event type
+
+    def on_event(kind: str, buf, body: int, end: int, log_t: int) -> None:
+        info = r.recorder_events
+        if info is None:
+            info = r.recorder_events = {"recorder": "rosbag2_dynamic_recorder (dynrec)", "message_counts": {},
+                                        "decoded": 0, "undecodable": 0, "limit_reached": False,
+                                        "note": rec_events.NOTE}  # fmt: skip
+        counts = info["message_counts"]
+        counts[kind] = counts.get(kind, 0) + 1
+        if kind not in ("PauseEvent", "SubscriptionChangeEvent"):
+            return
+        ev_ = rec_events.decode(kind, bytes(buf[body + 22 : end]))
+        if ev_ is None:
+            info["undecodable"] += 1
+        elif len(r.events) >= rec_events.EVENT_LIMIT:
+            info["limit_reached"] = True
+        else:
+            info["decoded"] += 1
+            r.events.append((log_t, base + stats["messages"], ev_[0], ev_[1], ev_[2]))
 
     def on_message(buf, body, end, a: int, b: int) -> None:
-        nonlocal tracked
+        nonlocal tracked, t_lo, t_hi
         if end - body < 22:
             raise ScanError("message record too short")
         cid, seq, log_t, pub_t = _MSG.unpack_from(buf, body)
-        tr = tracks.get(cid)
+        tr = tracks.get(lmap.get(cid))
         if ended or tr is None:
             raise ScanError("message after DataEnd or undefined channel")
         stats["messages"] += 1
         if stats["messages"] > limits.max_messages:
             raise ScanError(f"message count exceeds {limits.max_messages}")
+        if t_lo is None or log_t < t_lo:
+            t_lo = log_t
+        if t_hi is None or log_t > t_hi:
+            t_hi = log_t
+        kind = event_kind.get(cid)
+        if kind is not None:
+            on_event(kind, buf, body, end, log_t)
         if tr.cfg is None:
             tr.count += 1
             return
@@ -474,12 +604,20 @@ def scan_full(
                     f"gap-check timestamp storage exceeds {limits.max_tracked_messages} messages; "
                     "raise the max_tracked_messages limit"
                 )
-        tr.add((stats["messages"], a, b, log_t, pub_t, seq))
+        tr.add((base + stats["messages"], a, b, log_t, pub_t, seq, fname))
 
     def on_channel(c: _Cursor, loc: dict) -> None:
         cid = reg.channel(c, loc)
-        if cid not in tracks:
-            tracks[cid] = Track(cid, plan(r.channels[cid]["value"]["topic"]), ev)
+        if cid in lmap:
+            return
+        ch = r.channels[cid]["value"]
+        key = lmap[cid] = cid if ctx is None else ctx.channel(cid, r)
+        if key not in tracks:
+            tracks[key] = Track(key, plan(ch["topic"]), ev, ctx is not None)
+        schema = r.schemas.get(ch["schema_id"], {}).get("value", {})
+        kind = rec_events.event_type(schema.get("name"), ch["message_encoding"])
+        if kind is not None:
+            event_kind[cid] = kind
 
     def count_record() -> None:
         stats["records"] += 1
@@ -493,8 +631,9 @@ def scan_full(
         if src.read(8) != MAGIC:
             raise ScanError("not an MCAP file (bad magic)")
         while True:
+            r.complete_bytes = src.pos
             if size - src.pos < 9:
-                raise ScanError("unexpected end of file (missing footer)")
+                raise ScanTruncated("unexpected end of file (missing footer)")
             crc_before = src.crc
             offset = src.pos
             head = src.read(9)
@@ -557,6 +696,7 @@ def scan_full(
                 if ended:
                     raise ScanError("repeated DataEnd")
                 ended = True
+                r.data_end_seen = True
                 data_crc = c.u32()
                 if data_crc and data_crc != crc_before:
                     raise ScanError("data section CRC mismatch")
@@ -608,8 +748,13 @@ def scan_full(
                         r.unknown += 1
         r.sha256 = src.sha.hexdigest()
         r.stats["seconds"] = round(time.monotonic() - started, 3)
+        r.log_time_range = None if t_lo is None else (t_lo, t_hi)
+        if ctx is not None:
+            ctx.base += stats["messages"]
+            ctx.tracked = tracked
         return r
     except (ScanError, ValueError, OverflowError, MemoryError, struct.error) as e:
+        r.log_time_range = None if t_lo is None else (t_lo, t_hi)
         if not isinstance(e, (ScanTimeout, MemoryError)):
             src.drain()
         r.sha256 = src.sha.hexdigest() if src.pos == size else None
@@ -655,7 +800,8 @@ def scan_fast(f: BinaryIO, size: int, limits: Limits | None = None) -> ScanResul
     footer_at = size - 8 - FOOTER_RECORD_SIZE
     tail = read_at(footer_at, FOOTER_RECORD_SIZE + 8)
     if tail[-8:] != MAGIC:
-        raise ScanError("missing trailing magic")
+        r.fast_fallback = "file does not end with the MCAP magic bytes (it may be incomplete)"
+        return r
     if tail[0] != OP_FOOTER or _U64.unpack_from(tail, 1)[0] != 20:
         r.fast_fallback = "footer is not at the standard position"
         return r

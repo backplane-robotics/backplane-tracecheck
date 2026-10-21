@@ -9,7 +9,7 @@ from pathlib import Path
 from mcap.writer import CompressionType, Writer
 
 from tracecheck.contract import ContractError, validate
-from tracecheck.engine import analyze_bytes, analyze_file
+from tracecheck.engine import analyze_bag, analyze_bytes, analyze_file
 from tracecheck.reader import Limits, MiB
 from tracecheck.samples import CONTRACT, FLEET_CONTRACT, generate, write_fleet_sample, write_sample
 
@@ -241,7 +241,8 @@ class GoldenTests(unittest.TestCase):
             for case in expected["cases"]:
                 with self.subTest(case=case["file"], fast=case.get("fast", False)):
                     contract = json.loads((Path(td) / case["contract"]).read_text(encoding="utf-8"))
-                    r = analyze_file(Path(td) / case["file"], contract, fast=case.get("fast", False))
+                    analyze = analyze_bag if case.get("bag") else analyze_file
+                    r = analyze(Path(td) / case["file"], contract, fast=case.get("fast", False))
                     self.assertEqual(r["overall"], case["overall"])
                     self.assertEqual(r["scan_complete"], case["scan_complete"])
                     self.assertEqual(statuses(r), case["checks"])

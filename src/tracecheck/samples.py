@@ -1,9 +1,12 @@
 """Deterministic invented recordings; no robot data, imported assets, or fault execution."""
 
 import json
+import struct
 from pathlib import Path
 
 from mcap.writer import CompressionType, Writer
+
+DYNREC = 'rosbag2_dynamic_recorder_interfaces/msg/'
 
 CONTRACT = {'version': 1, 'name': 'Synthetic 10 Hz demo (edit for your recording)', 'profile': '',
             'metadata': {'session': {'software_version': 'demo-1'}}, 'topics': {
@@ -47,25 +50,54 @@ def write_sample(path, fault=False, chunked=True, compression=CompressionType.NO
         w.finish()
 
 
+def _cdr_event(stamp_ns, *fields):
+    """Little-endian plain CDR for a dynrec event: Time stamp, then uint8 (int) and string (str) fields."""
+    out = bytearray(b'\x00\x01\x00\x00')
+
+    def align(n):
+        out.extend(b'\x00' * ((-(len(out) - 4)) % n))
+
+    align(4)
+    out += struct.pack('<iI', stamp_ns // 1_000_000_000, stamp_ns % 1_000_000_000)
+    for f in fields:
+        if isinstance(f, int):
+            out.append(f)
+        else:
+            b = f.encode()
+            align(4)
+            out += struct.pack('<I', len(b) + 1) + b + b'\x00'
+    return bytes(out)
+
+
 def write_fleet_sample(path, seconds=60, compression=CompressionType.ZSTD, dropout=None, payload_scale=1,
-                       chunk_size=1024 * 1024):
+                       chunk_size=1024 * 1024, pauses=(), unsubscribed=(), span=None):
     """A multi-topic, ROS 2-shaped synthetic recording (payloads are filler bytes, not real CDR).
 
     ``dropout`` = (topic, start_s, end_s) removes that topic's messages in the window to create a gap.
     ``payload_scale`` multiplies payload sizes, to produce large files for streaming tests.
+    ``pauses`` = [(start_s, end_s)] and ``unsubscribed`` = [(topic, start_s, end_s)] remove messages
+    like a dynrec recorder would, and write its PauseEvent / SubscriptionChangeEvent messages
+    (real CDR, following the rosbag2_dynamic_recorder 0.2.0 message definitions).
+    ``span`` = (start_s, end_s) keeps only that slice of the recording, as one split file of a bag.
+    Returns the message count per topic.
     """
     start = 1_760_000_000_000_000_000  # fixed epoch, 2025-10-09
     rates = {'/imu': 200, '/odom': 50, '/scan': 10, '/camera/image/compressed': 15}
     sizes = {'/imu': 300, '/odom': 700, '/scan': 4400, '/camera/image/compressed': 60000}
+    types = [('/imu', 'sensor_msgs/msg/Imu'), ('/odom', 'nav_msgs/msg/Odometry'),
+             ('/scan', 'sensor_msgs/msg/LaserScan'), ('/camera/image/compressed', 'sensor_msgs/msg/CompressedImage')]
+    recorder = bool(pauses or unsubscribed)
     with Path(path).open('wb') as f:
         w = Writer(f, compression=compression, chunk_size=chunk_size)
         w.start(profile='ros2', library='backplane-tracecheck synthetic generator')
         cids = {}
-        for topic, schema in [('/imu', 'sensor_msgs/msg/Imu'), ('/odom', 'nav_msgs/msg/Odometry'),
-                              ('/scan', 'sensor_msgs/msg/LaserScan'),
-                              ('/camera/image/compressed', 'sensor_msgs/msg/CompressedImage')]:
+        for topic, schema in types:
             sid = w.register_schema(schema, 'ros2msg', f'# synthetic placeholder for {schema}'.encode())
             cids[topic] = w.register_channel(topic, 'cdr', sid, {'offered_qos_profiles': '- history: 3\n  depth: 0\n'})
+        if recorder:
+            for name, short in [('pause', 'PauseEvent'), ('subscription_change', 'SubscriptionChangeEvent')]:
+                sid = w.register_schema(DYNREC + short, 'ros2msg', f'# synthetic placeholder for {short}'.encode())
+                cids[name] = w.register_channel(f'/dynamic_recorder/events/{name}', 'cdr', sid)
         w.add_metadata('session', {'robot_id': 'demo-amr-01', 'software_version': 'demo-2.3.1', 'synthetic': 'true'})
         events = []
         for topic, hz in rates.items():
@@ -74,12 +106,83 @@ def write_fleet_sample(path, seconds=60, compression=CompressionType.ZSTD, dropo
                 t = start + i * period
                 if dropout and dropout[0] == topic and dropout[1] * 1e9 <= i * period < dropout[2] * 1e9:
                     continue
-                events.append((t, topic, i))
-        events.sort()
+                if any(a * 1e9 <= i * period < b * 1e9 for a, b in pauses):
+                    continue
+                if any(u == topic and a * 1e9 <= i * period < b * 1e9 for u, a, b in unsubscribed):
+                    continue
+                if span and not span[0] * 1e9 <= i * period < span[1] * 1e9:
+                    continue
+                events.append((t, topic, i, None))
+        node = '/dynamic_recorder'
+        if recorder:
+            for topic, schema in types:
+                events.append((start, 'subscription_change', 0, _cdr_event(start, topic, schema, 0, 'startup', node)))
+            for a, b in pauses:
+                ta, tb = start + int(a * 1e9), start + int(b * 1e9)
+                events.append((ta, 'pause', 0, _cdr_event(ta, 0, 'service:pause', node)))
+                events.append((tb, 'pause', 0, _cdr_event(tb, 1, 'service:resume', node)))
+            for topic, a, b in unsubscribed:
+                schema = dict(types)[topic]
+                ta, tb = start + int(a * 1e9), start + int(b * 1e9)
+                events.append((ta, 'subscription_change', 0,
+                               _cdr_event(ta, topic, schema, 1, 'service:unsubscribe_topics', node)))
+                events.append((tb, 'subscription_change', 0,
+                               _cdr_event(tb, topic, schema, 0, 'service:subscribe_topics', node)))
+        events.sort(key=lambda e: (e[0], e[1], e[2]))
         blobs = {topic: bytes((i * 31 + 7) & 0xFF for i in range(n * payload_scale)) for topic, n in sizes.items()}
-        for t, topic, i in events:
-            w.add_message(cids[topic], t, blobs[topic], t, sequence=i)
+        for seq, (t, topic, i, payload) in enumerate(events):
+            if payload is None:
+                w.add_message(cids[topic], t, blobs[topic], t, sequence=i)
+            else:
+                w.add_message(cids[topic], t, payload, t, sequence=seq)
         w.finish()
+    counts = {topic: 0 for topic, _ in types}
+    for _t, topic, _i, payload in events:
+        if payload is None:
+            counts[topic] += 1
+    return counts
+
+
+def write_bag_sample(folder, name, seconds=20, splits=(7, 14), metadata=True):
+    """A rosbag2-style bag folder: the fleet recording split by time into ``{name}_N.mcap`` files.
+
+    Each file registers its own schemas and channels, as rosbag2 does. ``metadata.yaml`` follows the
+    ROS 2 Humble layout (QoS profiles as one quoted string). Returns the file names in order.
+    """
+    folder = Path(folder)
+    folder.mkdir(exist_ok=True)
+    start = 1_760_000_000_000_000_000
+    bounds = [0, *splits, seconds]
+    files, totals = [], {}
+    for n, (a, b) in enumerate(zip(bounds, bounds[1:], strict=False)):
+        fname = f'{name}_{n}.mcap'
+        counts = write_fleet_sample(folder/fname, seconds=seconds, span=(a, b))
+        files.append((fname, a, b, sum(counts.values())))
+        for topic, k in counts.items():
+            totals[topic] = totals.get(topic, 0) + k
+    if not metadata:
+        return [f[0] for f in files]
+    types = {'/imu': 'sensor_msgs/msg/Imu', '/odom': 'nav_msgs/msg/Odometry', '/scan': 'sensor_msgs/msg/LaserScan',
+             '/camera/image/compressed': 'sensor_msgs/msg/CompressedImage'}
+    qos = '"- history: 3\\n  depth: 0\\n  reliability: 1\\n  durability: 2\\n  avoid_ros_namespace_conventions: false\\n"'
+    lines = ['rosbag2_bagfile_information:', '  version: 5', '  storage_identifier: mcap',
+             '  duration:', f'    nanoseconds: {seconds * 1_000_000_000}',
+             '  starting_time:', f'    nanoseconds_since_epoch: {start}',
+             f'  message_count: {sum(totals.values())}', '  topics_with_message_count:']
+    for topic, kind in types.items():
+        lines += ['    - topic_metadata:', f'        name: {topic}', f'        type: {kind}',
+                  '        serialization_format: cdr', f'        offered_qos_profiles: {qos}',
+                  f'      message_count: {totals[topic]}']
+    lines += ['  compression_format: ""', '  compression_mode: ""', '  relative_file_paths:']
+    lines += [f'    - {f[0]}' for f in files]
+    lines += ['  files:']
+    for fname, a, b, k in files:
+        lines += [f'    - path: {fname}', '      starting_time:',
+                  f'        nanoseconds_since_epoch: {start + a * 1_000_000_000}',
+                  '      duration:', f'        nanoseconds: {(b - a) * 1_000_000_000}', f'      message_count: {k}']
+    lines += ['  custom_data: ~', '  ros_distro: humble', '']
+    (folder/'metadata.yaml').write_bytes('\n'.join(lines).encode('utf-8'))
+    return [f[0] for f in files]
 
 
 def generate(dest):
@@ -99,5 +202,18 @@ def generate(dest):
     (dest/'malformed.mcap').write_bytes(b'not an MCAP recording\x00')
     (dest/'truncated.mcap').write_bytes((dest/'clean.mcap').read_bytes()[:-12])
     write_fleet_sample(dest/'fleet-zstd.mcap', seconds=20)
+    # Cut part-way through the message data, like a recorder that stopped mid-write: no summary, no footer.
+    fleet = (dest/'fleet-zstd.mcap').read_bytes()
+    (dest/'interrupted-zstd.mcap').write_bytes(fleet[:len(fleet) * 55 // 100])
     write_fleet_sample(dest/'fleet-dropout-lz4.mcap', seconds=20, compression=CompressionType.LZ4,
                        dropout=('/scan', 8, 9.5))
+    # A dynrec-style recording: paused for 1 s, and the camera topic unsubscribed for 0.8 s.
+    write_fleet_sample(dest/'fleet-paused-zstd.mcap', seconds=30, pauses=[(8, 9)],
+                       unsubscribed=[('/camera/image/compressed', 20, 20.8)])
+    # A ROS 2 bag folder: metadata.yaml plus three split files, checked as one recording.
+    write_bag_sample(dest/'fleet-bag', 'fleet-bag')
+    # The same bag after a recorder stopped unexpectedly: no metadata.yaml, last file cut off.
+    names = write_bag_sample(dest/'fleet-bag-interrupted', 'fleet-bag-interrupted', metadata=False)
+    last = dest/'fleet-bag-interrupted'/names[-1]
+    data = last.read_bytes()
+    last.write_bytes(data[:len(data) * 60 // 100])

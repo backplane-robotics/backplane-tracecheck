@@ -1,13 +1,15 @@
 // Browser engine tests: golden parity with the Python implementation, plus unit tests.
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import zlib from 'node:zlib';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { BagError, parseInfo, parseYaml, plan } from '../src/engine/bag.js';
 import { ContractError, loads } from '../src/engine/contract.js';
 import { crc32 } from '../src/engine/crc32.js';
-import { analyze, reportJson } from '../src/engine/engine.js';
+import { analyze, analyzeBag, reportJson } from '../src/engine/engine.js';
+import { decode as decodeEvent, eventType, explainer, windows } from '../src/engine/events.js';
 import { PyFloat, dumps, parse, pyFloatRepr } from '../src/engine/json.js';
 import { lz4Decompress } from '../src/engine/lz4.js';
 import { DEFAULT_LIMITS, decompress } from '../src/engine/reader.js';
@@ -18,11 +20,17 @@ const EX = join(ROOT, 'examples');
 const expected = JSON.parse(readFileSync(join(EX, 'expected.json'), 'utf8'));
 const blobOf = (name) => new Blob([readFileSync(join(EX, name))]);
 const contractOf = (name) => loads(readFileSync(join(EX, name), 'utf8'));
+/** A bag folder's own files as name -> Blob, like the app passes them. */
+const bagOf = (folder) => new Map(readdirSync(join(EX, folder)).sort().map((n) => [n, new Blob([readFileSync(join(EX, folder, n))])]));
+const run = (c) =>
+  c.bag
+    ? analyzeBag(c.file, bagOf(c.file), contractOf(c.contract), { fast: !!c.fast })
+    : analyze(blobOf(c.file), contractOf(c.contract), { filename: c.file, fast: !!c.fast });
 
 describe('golden cases (examples/expected.json)', () => {
   for (const c of expected.cases) {
     it(`${c.file} ${c.fast ? 'fast' : 'full'}`, async () => {
-      const r = await analyze(blobOf(c.file), contractOf(c.contract), { filename: c.file, fast: !!c.fast });
+      const r = await run(c);
       expect(r.overall).toBe(c.overall);
       expect(r.scan_complete).toBe(c.scan_complete);
       expect(Object.fromEntries(r.checks.map((x) => [x.id, x.status]))).toEqual(c.checks);
@@ -48,19 +56,20 @@ describe.skipIf(!existsSync(PY))('full report parity with Python', () => {
   const script = `
 import json, sys
 from pathlib import Path
-from tracecheck.engine import analyze_file
+from tracecheck.engine import analyze_bag, analyze_file
 ex = Path(sys.argv[1]); out = []
 for case in json.loads((ex / 'expected.json').read_text(encoding='utf-8'))['cases']:
     c = json.loads((ex / case['contract']).read_text(encoding='utf-8'))
-    out.append(json.dumps(analyze_file(ex / case['file'], c, fast=case.get('fast', False)), indent=2, ensure_ascii=False))
+    analyze = analyze_bag if case.get('bag') else analyze_file
+    out.append(json.dumps(analyze(ex / case['file'], c, fast=case.get('fast', False)), indent=2, ensure_ascii=False))
 sys.stdout.buffer.write(json.dumps(out).encode('utf-8'))
 `;
-  const run = spawnSync(PY, ['-c', script, EX], { encoding: 'utf8', maxBuffer: 64 << 20 });
-  const reports = run.status === 0 ? JSON.parse(run.stdout) : null;
-  it('python ran', () => expect(run.stderr || '').toBe(''));
+  const py = spawnSync(PY, ['-c', script, EX], { encoding: 'utf8', maxBuffer: 64 << 20 });
+  const reports = py.status === 0 ? JSON.parse(py.stdout) : null;
+  it('python ran', () => expect(py.stderr || '').toBe(''));
   expected.cases.forEach((c, i) => {
     it(`${c.file} ${c.fast ? 'fast' : 'full'}`, async () => {
-      const r = await analyze(blobOf(c.file), contractOf(c.contract), { filename: c.file, fast: !!c.fast });
+      const r = await run(c);
       expect(normalize(reportJson(r))).toBe(normalize(reports[i]));
     });
   });
@@ -126,8 +135,153 @@ describe('codecs and limits', () => {
     const r = await analyze(blobOf('truncated.mcap'), contractOf('demo-contract.json'));
     expect(r.scan_complete).toBe(false);
     expect(r.checks[0].status).toBe('fail');
+    expect(r.recovered.data_section_complete).toBe(true);
+  });
+  it('reports what was recovered from an interrupted recording', async () => {
+    const bytes = readFileSync(join(EX, 'fleet-zstd.mcap'));
+    const counts = [];
+    for (const pct of [30, 50, 70, 90]) {
+      const cut = new Blob([bytes.subarray(0, Math.floor((bytes.length * pct) / 100))]);
+      const r = await analyze(cut, contractOf('fleet-contract.json'));
+      expect(r.checks[0].findings[0].truncated).toBe(true);
+      expect(r.recovered.data_section_complete).toBe(false);
+      expect(r.recovered.topics.reduce((a, t) => a + t.message_count, 0)).toBe(r.recovered.messages);
+      expect(r.checks.slice(1).every((c) => c.status === 'skipped')).toBe(true);
+      counts.push(r.recovered.messages);
+    }
+    expect(counts).toEqual([...counts].sort((a, b) => a - b));
+    const html = render(await analyze(blobOf('interrupted-zstd.mcap'), contractOf('fleet-contract.json')));
+    expect(html).toContain('Recovered before the cut-off');
+  });
+  it('keeps the generic finding for files that are not MCAP', async () => {
+    const r = await analyze(blobOf('malformed.mcap'), contractOf('demo-contract.json'));
+    expect(r.recovered).toBeUndefined();
+    expect(r.checks[0].findings[0].detail).toContain('bad magic');
   });
   it('escapes HTML', () => {
     expect(esc(`<a href="x">'&`)).toBe('&lt;a href=&quot;x&quot;&gt;&#x27;&amp;');
+  });
+});
+
+// Little-endian plain CDR, like samples._cdr_event: Time stamp, then uint8 (number) and string fields.
+function cdrEvent(...fields) {
+  const out = [0, 1, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0];
+  for (const f of fields) {
+    if (typeof f === 'number') out.push(f);
+    else {
+      while ((out.length - 4) % 4) out.push(0);
+      const b = [...new TextEncoder().encode(f), 0];
+      out.push(b.length, 0, 0, 0, ...b);
+    }
+  }
+  return new Uint8Array(out);
+}
+
+describe('recorder events', () => {
+  it('decodes dynrec pause and subscription events', () => {
+    expect(decodeEvent('PauseEvent', cdrEvent(0, 'service:pause', '/n'))).toEqual(['pause', 0, null]);
+    expect(decodeEvent('SubscriptionChangeEvent', cdrEvent('/scan', 'sensor_msgs/msg/LaserScan', 1, 'r', '/n'))).toEqual(['subscription', 1, '/scan']);
+    expect(decodeEvent('PauseEvent', cdrEvent(7, 'r', '/n'))).toBeNull();
+    expect(decodeEvent('PauseEvent', new Uint8Array([0, 1, 0, 0, 1, 2]))).toBeNull();
+    expect(decodeEvent('LowDiskEvent', cdrEvent(0))).toBeNull();
+    expect(eventType('rosbag2_dynamic_recorder_interfaces/msg/PauseEvent', 'cdr')).toBe('PauseEvent');
+    expect(eventType('rosbag2_dynamic_recorder_interfaces/msg/PauseEvent', 'json')).toBeNull();
+  });
+  it('explains only gaps covered within the threshold', () => {
+    const wins = windows([[100n, 1, 'pause', 0, null], [200n, 2, 'pause', 1, null]]);
+    const explain = explainer(wins, '/imu', 10n);
+    expect(explain(95n, 205n)).toEqual(['recorder_paused']);
+    expect(explain(80n, 205n)).toBeNull();
+    expect(explainer(windows([[1n, 1, 'subscription', 1, '/cam']]), '/imu', 10n)).toBeNull();
+  });
+  it('lists explained gaps in the paused demo and passes', async () => {
+    const r = await analyze(blobOf('fleet-paused-zstd.mcap'), contractOf('fleet-contract.json'));
+    expect(r.overall).toBe('pass');
+    const cam = r.checks[6].findings.find((f) => f.topic === '/camera/image/compressed');
+    expect(cam.explained_gaps.map((g) => g.explained_by)).toEqual([['recorder_paused'], ['topic_unsubscribed']]);
+    expect(render(r)).toContain('explained_gaps');
+  });
+  it('leaves recorded pauses out of the average rate', async () => {
+    const c = contractOf('fleet-contract.json');
+    c.get('topics').get('/imu').set('min_rate_hz', 198n);
+    const r = await analyze(blobOf('fleet-paused-zstd.mcap'), c);
+    const imu = r.checks[5].findings.find((f) => f.topic === '/imu');
+    expect(imu.status).toBe('pass');
+    expect(imu.observed_hz.v).toBeLessThan(198);
+    expect(imu.active_hz.v).toBeGreaterThan(199);
+    expect([imu.excluded_ns, imu.excluded_by]).toEqual([1000000000n, ['recorder_paused']]);
+  });
+});
+
+describe('ROS 2 bag folders', () => {
+  const meta = readFileSync(join(EX, 'fleet-bag', 'metadata.yaml'), 'utf8');
+  const contract = () => contractOf('fleet-contract.json');
+  const statusOf = (r) => Object.fromEntries(r.checks.map((x) => [x.id, x.status]));
+
+  it('parses Humble metadata, including quoted QoS strings', () => {
+    const info = parseInfo(meta);
+    expect(info.storage_identifier).toBe('mcap');
+    expect(info.files.map((f) => f.name)).toEqual(['fleet-bag_0.mcap', 'fleet-bag_1.mcap', 'fleet-bag_2.mcap']);
+    expect(info.message_count).toBe(5500n);
+    const q = parseYaml(meta).get('rosbag2_bagfile_information').get('topics_with_message_count')[0].get('topic_metadata').get('offered_qos_profiles');
+    expect(q.startsWith('- history: 3\n  depth: 0\n')).toBe(true);
+  });
+  it('parses Jazzy-style nested QoS lists and rejects what it does not support', () => {
+    const doc = parseYaml('a:\n  - x: 1\n    y:\n      - z: "q\\u00e9"\nb: {}\n');
+    expect(doc.get('a')[0].get('y')[0].get('z')).toBe('qé');
+    expect(doc.get('b').size).toBe(0);
+    for (const bad of ['a: b\n  c: d', '\ta: 1', 'a: 1\na: 2', 'x: "open', 'x: [1, 2]', 'x: "\\ud800"']) expect(() => parseYaml(bad)).toThrow();
+  });
+  it('orders split files naturally and refuses non-MCAP bags', () => {
+    expect(plan('b', ['b_10.mcap', 'b_2.mcap', 'notes.txt'], null).files.map((f) => f.name)).toEqual(['b_2.mcap', 'b_10.mcap']);
+    const sqlite = meta.replace('storage_identifier: mcap', 'storage_identifier: sqlite3');
+    expect(() => plan('b', ['fleet-bag_0.mcap'], sqlite)).toThrow(BagError);
+  });
+  it('matches the single-file recording it was split from', async () => {
+    const single = await analyze(blobOf('fleet-zstd.mcap'), contract());
+    const bag = await analyzeBag('fleet-bag', bagOf('fleet-bag'), contract());
+    expect(bag.inventory.map((x) => [x.topic, x.message_count])).toEqual(single.inventory.map((x) => [x.topic, x.message_count]));
+    expect(bag.checks[5].findings.map((f) => f.observed_hz.v)).toEqual(single.checks[5].findings.map((f) => f.observed_hz.v));
+    expect(bag.inventory[0].location.file).toBe('fleet-bag_0.mcap');
+    expect(render(bag)).toContain('ROS 2 bag folder');
+  });
+  it('fails a listed file that is missing and skips the partial checks', async () => {
+    const files = bagOf('fleet-bag');
+    files.delete('fleet-bag_1.mcap');
+    const r = await analyzeBag('fleet-bag', files, contract());
+    expect(r.scan_complete).toBe(false);
+    expect(statusOf(r).C11).toBe('fail');
+    expect(['C02', 'C07', 'C10'].map((k) => statusOf(r)[k])).toEqual(['skipped', 'skipped', 'skipped']);
+    expect(r.bag.files[1].scan).toBe('missing');
+  });
+  it('fails a count that differs from metadata.yaml', async () => {
+    const files = bagOf('fleet-bag');
+    files.set('metadata.yaml', new Blob([meta.replace('message_count: 5500', 'message_count: 5501')]));
+    const r = await analyzeBag('fleet-bag', files, contract());
+    const bad = r.checks[10].findings.filter((f) => f.status === 'fail');
+    expect(bad.map((f) => [f.scope, f.claimed, f.observed])).toEqual([['bag', 5501n, 5500]]);
+  });
+  it('catches a gap across a file boundary when a middle file is gone and there is no metadata', async () => {
+    const files = bagOf('fleet-bag');
+    files.delete('metadata.yaml');
+    files.delete('fleet-bag_1.mcap');
+    const r = await analyzeBag('fleet-bag', files, contract());
+    expect(statusOf(r).C11).toBe('warn');
+    const imu = r.checks[6].findings.find((f) => f.topic === '/imu');
+    expect(imu.status).toBe('fail');
+    expect([imu.evidence[0].previous.file, imu.evidence[0].current.file]).toEqual(['fleet-bag_0.mcap', 'fleet-bag_2.mcap']);
+  });
+  it('reports the cut-off file of an interrupted bag', async () => {
+    const r = await analyzeBag('fleet-bag-interrupted', bagOf('fleet-bag-interrupted'), contract());
+    expect(r.recovered.incomplete_file).toBe('fleet-bag-interrupted_2.mcap');
+    expect(r.recovered.topics.reduce((a, t) => a + t.message_count, 0)).toBe(r.recovered.messages);
+    expect(r.bag.files.map((f) => f.scan)).toEqual(['complete', 'complete', 'incomplete']);
+  });
+  it('warns about an unlisted .mcap file and does not scan it', async () => {
+    const files = bagOf('fleet-bag');
+    files.set('stray.mcap', blobOf('clean.mcap'));
+    const r = await analyzeBag('fleet-bag', files, contract());
+    expect(r.overall).toBe('warn');
+    expect(r.bag.files.at(-1)).toMatchObject({ name: 'stray.mcap', listed: false, scan: 'not listed' });
   });
 });

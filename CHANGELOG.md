@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-20
+
+### Added
+- **Incomplete recordings.** A file that ends before its MCAP footer (for example, a recorder that stopped mid-write, or a file cut off while copying) now gets a specific C01 finding and a `recovered` report section: readable bytes, complete messages, log-time span, per-topic counts, and whether all message data was read. The other checks stay skipped; they are not evaluated on partial data. Shown in the CLI summary, the web app and the HTML report.
+- `interrupted-zstd.mcap` synthetic example and web demo.
+- **Gaps explained by recorder events.** When a recording contains rosbag2_dynamic_recorder (dynrec) `PauseEvent` or `SubscriptionChangeEvent` messages, C07 lists gaps covered by a recorded pause or topic unsubscribe as *explained* (with `explained_gap_count` and `explained_gaps`); they don't fail. Unexplained gaps still fail. The events are the recorder's own account and are not verified. Only their action and topic name are read; all other payloads stay opaque. Applies to the `log_time` basis only. A new top-level `recorder_events` section summarises the events found.
+- `fleet-paused-zstd.mcap` synthetic example and "Paused recording (dynrec)" web demo.
+- FCC Covered List robot tracker page on the website (`/tools/covered-list-robots/`).
+- **ROS 2 bag folders.** `tracecheck check <folder>` and the web app (*Choose a bag folder*, or drop a folder) check a rosbag2 folder (`metadata.yaml` plus split `.mcap` files) as one recording. Channels are matched across files, so gaps, regressions and sequence breaks across file boundaries count. New check **C11 ROS 2 bag metadata agreement** compares the folder and the per-file, per-topic and total message counts with `metadata.yaml`; a listed file that is missing fails, and an unlisted `.mcap` warns and is not checked. A new `bag` report section lists each file with its size, SHA-256 and scan state; finding locations include a `file` key; `recovered` names the `incomplete_file`. Non-MCAP storage and rosbag2 file compression are refused (exit 2).
+- `fleet-bag/` and `fleet-bag-interrupted/` synthetic examples and web demos.
+- **`tracecheck manifest` and `tracecheck verify`.** Write a JSON manifest of an `.mcap` file or a ROS 2 bag folder (each file's size and SHA-256, plus the message count per topic), then check a copy against it after transfer. Each file is reported as match, changed, missing or extra; exit 0 when everything matches, 1 when something differs. A matching hash identifies the same bytes; it does not establish who made the recording or that its contents are true, and the manifest is not signed.
+
+### Changed
+- Fast mode falls back to a full scan when the file doesn't end with the MCAP magic bytes, so incomplete files get the recovered summary.
+- Web demo list: the interrupted fleet recording replaces the small truncated demo; the dropout demo is correctly described as a lidar (`/scan`) outage.
+- Tracecheck page and landing page Pro note: "folder-based processing" now reads "checking many recordings at once", since checking one bag folder is free.
+- **C06 average rate leaves out recorded pauses.** When a recording contains dynrec pause or unsubscribe events, the rate bounds are applied to `active_hz`, which leaves out the time those events cover. The finding also reports `observed_hz` (whole span, as before), `excluded_ns` and `excluded_by`. Recordings without such events are unchanged.
+
 ## [0.2.0] - 2026-10-14
 
 ### Added

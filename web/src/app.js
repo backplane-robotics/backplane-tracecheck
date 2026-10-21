@@ -5,6 +5,7 @@ import { initChrome, toast } from './chrome.js';
 import { ContractError, loads } from './engine/contract.js';
 import { VERSION } from './engine/engine.js';
 import { PyFloat, parse } from './engine/json.js';
+import { initFeedback } from './feedback.js';
 
 initChrome();
 
@@ -14,11 +15,14 @@ const ui = {
   preset: $('contract-preset'), editor: $('contract-editor'), status: $('contract-status'), contractFile: $('contract-file'),
   fast: $('opt-fast'), ignoreCrc: $('opt-ignore-crc'), selected: $('selected-file'), run: $('run-btn'),
   progress: $('progress'), bar: $('progress-bar'), pct: $('progress-pct'), bytes: $('progress-bytes'), rate: $('progress-rate'), eta: $('progress-eta'),
-  results: $('results'), error: $('error-box'),
+  results: $('results'), error: $('error-box'), folderInput: $('folder-input'), bagPick: $('bag-pick'),
 };
 $('app-version').textContent = `v${VERSION}`;
+// Feedback receives only the app version; it has no access to scan state.
+initFeedback({ version: VERSION });
 
-const state = { file: null, demo: null, contractOk: false, worker: null, report: null, json: '', html: '', running: false };
+// `file` is one .mcap; `bag` is one ROS 2 bag folder: { folder, files: Map(name -> File) }.
+const state = { file: null, bag: null, demo: null, contractOk: false, worker: null, report: null, json: '', html: '', running: false };
 
 // ---------- formatting helpers ----------
 const fmtBytes = (n) => {
@@ -146,19 +150,73 @@ $('contract-download').addEventListener('click', () => download('contract.json',
 // ---------- recording selection ----------
 function setFile(file, demo = null) {
   state.file = file;
+  state.bag = null;
   state.demo = demo;
   ui.selected.replaceChildren(
     h('span', { class: 'sel-name', text: file.name }),
     h('span', { class: 'mono muted', text: `${fmtBytes(file.size)}${demo ? ' · demo' : ''}` }),
   );
   ui.dropzone.classList.add('has-file');
+  ui.bagPick.classList.remove('active');
   ui.dzTitle.textContent = file.name;
   ui.dzSub.textContent = `${fmtBytes(file.size)} · click or drop to replace`;
   document.querySelectorAll('.demo').forEach((d) => d.classList.toggle('active', d.dataset.file === demo?.file));
   updateRun();
 }
 
+const bagBytes = (files) => [...files].filter(([n]) => n.endsWith('.mcap')).reduce((a, [, f]) => a + f.size, 0);
+const selectedBytes = () => (state.bag ? bagBytes(state.bag.files) : state.file ? state.file.size : 0);
+
+/** Select one ROS 2 bag folder. `files` maps plain file names (no subfolders) to File objects. */
+function setBag(folder, files, demo = null) {
+  const mcaps = [...files.keys()].filter((n) => n.endsWith('.mcap')).length;
+  if (!mcaps) return toast('No .mcap files in that folder');
+  state.file = null;
+  state.bag = { folder, files };
+  state.demo = demo;
+  const meta = files.has('metadata.yaml') ? 'metadata.yaml' : 'no metadata.yaml';
+  const summary = `${mcaps} .mcap file${mcaps === 1 ? '' : 's'} · ${meta} · ${fmtBytes(bagBytes(files))}`;
+  ui.selected.replaceChildren(
+    h('span', { class: 'sel-name', text: `${folder}/` }),
+    h('span', { class: 'mono muted', text: `bag folder · ${summary}${demo ? ' · demo' : ''}` }),
+  );
+  ui.dropzone.classList.add('has-file');
+  ui.bagPick.classList.add('active');
+  ui.dzTitle.textContent = `${folder}/`;
+  ui.dzSub.textContent = `${summary} · click or drop to replace`;
+  document.querySelectorAll('.demo').forEach((d) => d.classList.toggle('active', d.dataset.file === demo?.file));
+  updateRun();
+}
+
 ui.fileInput.addEventListener('change', () => ui.fileInput.files[0] && setFile(ui.fileInput.files[0]));
+$('folder-btn').addEventListener('click', () => ui.folderInput.click());
+ui.folderInput.addEventListener('change', () => {
+  // webkitRelativePath is "folder/name"; files in subfolders ("folder/sub/name") are not part of the bag.
+  const files = new Map();
+  let folder = null;
+  for (const f of ui.folderInput.files) {
+    const parts = (f.webkitRelativePath || f.name).split('/');
+    folder ??= parts.length > 1 ? parts[0] : 'bag';
+    if (parts.length <= 2) files.set(parts[parts.length - 1], f);
+  }
+  ui.folderInput.value = '';
+  if (folder !== null) setBag(folder, files);
+});
+
+/** Read the plain files of a dropped folder (not its subfolders). */
+async function folderFiles(entry) {
+  const reader = entry.createReader();
+  const entries = [];
+  for (;;) {
+    const batch = await new Promise((ok, bad) => reader.readEntries(ok, bad));
+    if (!batch.length) break;
+    entries.push(...batch);
+  }
+  const files = new Map();
+  for (const e of entries.filter((x) => x.isFile)) files.set(e.name, await new Promise((ok, bad) => e.file(ok, bad)));
+  return files;
+}
+
 for (const ev of ['dragenter', 'dragover']) {
   ui.dropzone.addEventListener(ev, (e) => {
     e.preventDefault();
@@ -166,10 +224,21 @@ for (const ev of ['dragenter', 'dragover']) {
   });
 }
 for (const ev of ['dragleave', 'drop']) ui.dropzone.addEventListener(ev, () => ui.dropzone.classList.remove('drag'));
-ui.dropzone.addEventListener('drop', (e) => {
+ui.dropzone.addEventListener('drop', async (e) => {
   e.preventDefault();
-  const f = e.dataTransfer?.files?.[0];
-  if (f) setFile(f);
+  const items = [...(e.dataTransfer?.items || [])];
+  const entries = items.map((it) => it.webkitGetAsEntry?.()).filter(Boolean); // must be read before any await
+  if (entries.length === 1 && entries[0].isDirectory) {
+    try {
+      setBag(entries[0].name, await folderFiles(entries[0]));
+    } catch {
+      toast('Could not read that folder; try "Choose a bag folder"');
+    }
+    return;
+  }
+  const dropped = e.dataTransfer?.files || [];
+  if (dropped.length > 1) return toast('Drop one .mcap file, or one bag folder');
+  if (dropped[0]) setFile(dropped[0]);
 });
 // Prevent the browser from navigating to a file dropped outside the zone.
 window.addEventListener('dragover', (e) => e.preventDefault());
@@ -186,8 +255,14 @@ async function loadDemos() {
         b.addEventListener('click', async () => {
           b.classList.add('loading');
           try {
-            const blob = await (await fetch(`/demo/${d.file}`)).blob();
-            setFile(new File([blob], d.file), d);
+            if (d.bag) {
+              const files = new Map();
+              for (const n of d.files) files.set(n, new File([await (await fetch(`/demo/${d.bag}/${n}`)).blob()], n));
+              setBag(d.bag, files, d);
+            } else {
+              const blob = await (await fetch(`/demo/${d.file}`)).blob();
+              setFile(new File([blob], d.file), d);
+            }
             if (ui.preset.value !== d.contract) {
               ui.preset.value = d.contract;
               await loadPreset(d.contract);
@@ -205,7 +280,7 @@ async function loadDemos() {
 }
 
 function updateRun() {
-  ui.run.disabled = !(state.file && state.contractOk) || state.running;
+  ui.run.disabled = !((state.file || state.bag) && state.contractOk) || state.running;
 }
 
 // ---------- running ----------
@@ -220,15 +295,20 @@ let runStarted = 0;
 function run() {
   if (ui.run.disabled) return;
   ui.error.hidden = true;
+  $('error-actions').hidden = true;
   ui.results.hidden = true;
   state.running = true;
   updateRun();
   ui.run.classList.add('busy');
   ui.progress.hidden = false;
-  setProgress(0, state.file.size, 0);
+  setProgress(0, selectedBytes(), 0);
   newWorker();
   runStarted = performance.now();
-  state.worker.postMessage({ file: state.file, filename: state.file.name, contractText: ui.editor.value, fast: ui.fast.checked, ignoreCrc: ui.ignoreCrc.checked });
+  const opts = { contractText: ui.editor.value, fast: ui.fast.checked, ignoreCrc: ui.ignoreCrc.checked };
+  if (state.bag) {
+    const files = [...state.bag.files].map(([name, file]) => ({ name, file }));
+    state.worker.postMessage({ ...opts, bag: { folder: state.bag.folder, files } });
+  } else state.worker.postMessage({ ...opts, file: state.file, filename: state.file.name });
 }
 
 function setProgress(done, total, seconds) {
@@ -252,13 +332,16 @@ function fail(message) {
   stopRunning();
   ui.error.textContent = message;
   ui.error.hidden = false;
+  $('error-actions').hidden = false;
 }
 
 function onWorkerMessage({ data }) {
   if (data.type === 'progress') setProgress(data.done, data.total, data.seconds);
-  else if (data.type === 'error') fail(data.kind === 'contract' ? `Contract error: ${data.message}` : `Unexpected error: ${data.message}`);
-  else if (data.type === 'result') {
-    setProgress(state.file.size, state.file.size, data.seconds);
+  else if (data.type === 'error') {
+    const prefix = { contract: 'Contract error', bag: 'This folder can’t be checked' }[data.kind] || 'Unexpected error';
+    fail(`${prefix}: ${data.message}`);
+  } else if (data.type === 'result') {
+    setProgress(selectedBytes(), selectedBytes(), data.seconds);
     state.json = data.json;
     state.html = data.html;
     state.report = plain(parse(data.json));
@@ -280,8 +363,10 @@ $('cancel-btn').addEventListener('click', () => {
 // ---------- results ----------
 const STATUS_TEXT = { pass: 'Pass', warn: 'Warn', fail: 'Fail', skipped: 'Skipped' };
 const pill = (s) => h('span', { class: `pill ${s}`, text: s });
-const FACT_KEYS = ['topic', 'channel_id', 'observed', 'expected', 'observed_hz', 'minimum', 'maximum', 'time_basis', 'expected_interval_ns',
-  'boundary_tolerance_ns', 'missing_crc_policy', 'crc_coverage_complete', 'unknown_records_skipped'];
+const FACT_KEYS = ['file', 'topic', 'channel_id', 'scope', 'claimed', 'observed', 'expected', 'observed_hz', 'active_hz', 'excluded_ns', 'excluded_by', 'minimum', 'maximum', 'time_basis', 'expected_interval_ns',
+  'boundary_tolerance_ns', 'missing_crc_policy', 'crc_coverage_complete', 'unknown_records_skipped', 'explained_gap_count', 'files_scanned',
+  'metadata', 'ros_distro', 'files_listed'];
+const EXPLAINED_LABELS = { recorder_paused: 'recorder paused', topic_unsubscribed: 'topic unsubscribed by recorder' };
 
 const fmtNs = (ns) => {
   const n = Number(ns);
@@ -293,27 +378,100 @@ const kvs = (obj, prefix = '') =>
       ? kvs(v, `${prefix}${k}.`)
       : [h('span', { class: 'kv' }, h('i', { text: prefix + k }), h('b', { text: Array.isArray(v) ? `[${v.map(String).join(', ')}]` : v === null ? 'null' : String(v) }))]);
 
-function evidenceLine(ev) {
+function evidenceLine(ev, explained = false) {
   if (ev.previous && ev.current) {
-    const rest = Object.fromEntries(Object.entries(ev).filter(([k]) => k !== 'previous' && k !== 'current'));
+    const rest = Object.fromEntries(Object.entries(ev).filter(([k]) => k !== 'previous' && k !== 'current')
+      .map(([k, v]) => [k, k === 'explained_by' && Array.isArray(v) ? v.map((x) => EXPLAINED_LABELS[x] || x).join(', ') : v]));
+    const tag = 'gap_ns' in rest ? `gap ${fmtNs(rest.gap_ns)}${explained ? ' · explained' : ''}` : 'detail';
     return h('li', { class: 'ev pair' },
       h('div', { class: 'ev-row' }, h('span', { class: 'ev-tag', text: 'previous' }), kvs(ev.previous)),
       h('div', { class: 'ev-row' }, h('span', { class: 'ev-tag', text: 'current' }), kvs(ev.current)),
-      Object.keys(rest).length ? h('div', { class: 'ev-row' }, h('span', { class: 'ev-tag hot', text: 'gap_ns' in rest ? `gap ${fmtNs(rest.gap_ns)}` : 'detail' }), kvs(rest)) : null);
+      Object.keys(rest).length ? h('div', { class: 'ev-row' }, h('span', { class: explained ? 'ev-tag' : 'ev-tag hot', text: tag }), kvs(rest)) : null);
   }
   return h('li', { class: 'ev' }, kvs(ev));
 }
 
 function findingEl(f) {
   const facts = FACT_KEYS.filter((k) => k in f).map((k) =>
-    h('span', { class: 'fact' }, h('i', { text: k.replace(/_/g, ' ') }), h('b', { text: Array.isArray(f[k]) ? `[${f[k].map(fmtNum).join(', ')}]` : f[k] === null ? 'null' : fmtNum(f[k]) })));
+    h('span', { class: 'fact' }, h('i', { text: k.replace(/_/g, ' ') }), h('b', { text: k === 'excluded_by' ? f[k].map((x) => EXPLAINED_LABELS[x] || x).join(', ') : k === 'excluded_ns' ? fmtNs(f[k]) : Array.isArray(f[k]) ? `[${f[k].map(fmtNum).join(', ')}]` : f[k] === null ? 'null' : fmtNum(f[k]) })));
   const el = h('div', { class: `finding ${f.status}` }, h('div', { class: 'finding-head' }, pill(f.status), h('p', { text: f.detail })));
   if (facts.length) el.append(h('div', { class: 'facts' }, facts));
   if (Array.isArray(f.evidence) && f.evidence.length) {
     el.append(h('div', { class: 'ev-head mono' }, `Evidence · ${fmtNum(f.evidence_count)} total${f.evidence_omitted ? ` · ${fmtNum(f.evidence_omitted)} not shown` : ''}`));
-    el.append(h('ul', { class: 'ev-list' }, f.evidence.map(evidenceLine)));
+    el.append(h('ul', { class: 'ev-list' }, f.evidence.map((ev) => evidenceLine(ev))));
+  }
+  if (Array.isArray(f.explained_gaps) && f.explained_gaps.length) {
+    const hidden = Number(f.explained_gap_count) - f.explained_gaps.length;
+    el.append(h('div', { class: 'ev-head mono' }, `Explained by recorder events · ${fmtNum(f.explained_gap_count)} total${hidden > 0 ? ` · ${fmtNum(hidden)} not shown` : ''}`));
+    el.append(h('ul', { class: 'ev-list explained' }, f.explained_gaps.map((ev) => evidenceLine(ev, true))));
   }
   return el;
+}
+
+/** Summary of what was readable in a file that ends before its MCAP footer. */
+function renderRecovered(rec) {
+  const box = $('result-recovered');
+  if (!rec) {
+    box.hidden = true;
+    box.replaceChildren();
+    return;
+  }
+  const pct = Number(rec.file_bytes) ? Math.floor((Number(rec.complete_bytes) / Number(rec.file_bytes)) * 1000) / 10 : 0;
+  const fact = (label, value) => h('div', {}, h('dt', { text: label }), h('dd', { class: 'mono', text: value }));
+  const topics = rec.topics || [];
+  box.replaceChildren(
+    h('h3', { text: 'Recovered before the cut-off' }),
+    h('p', { class: 'muted', text: rec.data_section_complete
+      ? 'All message data was read. The file is missing its summary or footer, which tools use to index the recording.'
+      : 'The file stops partway through its message data. These complete messages were readable before that point; anything recorded after it is not in this file.' }),
+    h('dl', { class: 'recovered-facts' },
+      fact('Messages', fmtNum(rec.messages)),
+      fact('Time span', rec.log_time_span_ns === null ? '—' : fmtNs(rec.log_time_span_ns)),
+      fact('Readable bytes', `${fmtBytes(Number(rec.complete_bytes))} of ${fmtBytes(Number(rec.file_bytes))} (${pct}%)`),
+      rec.incomplete_file ? fact('File cut off', rec.incomplete_file) : fact('Message data complete', rec.data_section_complete ? 'Yes' : 'No')),
+    topics.length
+      ? h('div', { class: 'table-wrap' }, h('table', { id: 'recovered-table' },
+          h('thead', {}, h('tr', {}, h('th', { text: 'Topic' }), h('th', { text: 'Messages recovered' }))),
+          h('tbody', {}, topics.map((t) => h('tr', {}, h('td', { class: 'mono', text: t.topic }), h('td', { class: 'mono', text: fmtNum(t.message_count) }))))))
+      : null,
+    h('p', { class: 'tiny muted', text: 'The contract checks were not run on this partial data. To find out why the file is incomplete, check the recorder’s logs and how the file was copied or uploaded.' }),
+  );
+  box.hidden = false;
+}
+
+const SCAN_TEXT = { complete: 'checked', 'summary only': 'summary read (fast mode)', incomplete: 'cut off', error: 'could not be read',
+  'not scanned': 'not checked', missing: 'missing from folder', 'not listed': 'not in metadata.yaml; not checked' };
+
+/** The files of a ROS 2 bag folder, in the order they were checked. */
+function renderBag(bag) {
+  const box = $('result-bag');
+  if (!bag) {
+    box.hidden = true;
+    box.replaceChildren();
+    return;
+  }
+  const meta = { present: 'metadata.yaml read', absent: 'no metadata.yaml', unreadable: 'metadata.yaml unreadable' }[bag.metadata];
+  const msgs = (f) => {
+    if (f.messages === null) return f.messages_claimed === null ? '—' : `— (metadata.yaml: ${fmtNum(f.messages_claimed)})`;
+    if (f.messages_claimed === null) return fmtNum(f.messages);
+    return f.messages === f.messages_claimed ? fmtNum(f.messages) : `${fmtNum(f.messages)} (metadata.yaml: ${fmtNum(f.messages_claimed)})`;
+  };
+  const cls = (f) => (['missing', 'incomplete', 'error'].includes(f.scan) || (f.messages !== null && f.messages_claimed !== null && f.messages !== f.messages_claimed)
+    ? 'bad' : ['not listed', 'not scanned'].includes(f.scan) ? 'warn' : '');
+  box.replaceChildren(
+    h('h3', {}, `Bag folder · ${bag.folder}/`, h('span', { class: 'pill skipped', text: meta })),
+    h('div', { class: 'table-wrap' }, h('table', { id: 'bag-table' },
+      h('thead', {}, h('tr', {}, ...['File', 'Status', 'Messages', 'Size', 'SHA-256'].map((t) => h('th', { text: t })))),
+      h('tbody', {}, bag.files.map((f) => h('tr', {},
+        h('td', { class: 'mono', text: f.name }),
+        h('td', { class: cls(f), text: SCAN_TEXT[f.scan] || f.scan }),
+        h('td', { class: 'mono', text: msgs(f) }),
+        h('td', { class: 'mono', text: f.bytes === null ? '—' : fmtBytes(f.bytes) }),
+        h('td', { class: 'mono', title: f.sha256 || '', text: f.sha256 ? `${f.sha256.slice(0, 16)}…` : '—' })))))),
+    h('p', { class: 'tiny muted', text: 'The files were checked in this order as one recording; gaps and sequence breaks across file boundaries count. ' +
+      'A SHA-256 identifies the bytes that were read; it does not show where they came from. See C11 for the metadata.yaml comparison.' }),
+  );
+  box.hidden = false;
 }
 
 function renderResults(r, seconds) {
@@ -321,8 +479,10 @@ function renderResults(r, seconds) {
   const ring = $('overall-ring');
   ring.className = `overall-ring ${r.overall}`;
   $('overall-label').textContent = STATUS_TEXT[r.overall];
-  $('h-results').textContent = r.scan_complete ? `Contract review: ${STATUS_TEXT[r.overall].toLowerCase()}` : 'Scan incomplete';
-  $('result-file').textContent = `${r.source.name} · ${fmtBytes(r.source.bytes)}${r.source.sha256 ? ` · sha256 ${r.source.sha256.slice(0, 16)}…` : ''}`;
+  $('h-results').textContent = r.scan_complete ? `Contract review: ${STATUS_TEXT[r.overall].toLowerCase()}` : r.recovered ? 'Recording incomplete' : 'Scan incomplete';
+  $('result-file').textContent = r.bag
+    ? `${r.source.name}/ · bag folder · ${r.bag.files.length} file${r.bag.files.length === 1 ? '' : 's'} · ${fmtBytes(r.source.bytes)}`
+    : `${r.source.name} · ${fmtBytes(r.source.bytes)}${r.source.sha256 ? ` · sha256 ${r.source.sha256.slice(0, 16)}…` : ''}`;
   $('result-file').title = r.source.sha256 || '';
   $('result-counts').replaceChildren(...['pass', 'warn', 'fail', 'skipped'].map((s) => h('span', { class: `count ${s}` }, h('b', { text: sc[s] }), ` ${s}`)));
 
@@ -338,6 +498,8 @@ function renderResults(r, seconds) {
     stat('CRC coverage', crcHeadline(cov), [cov.data_section ? `data-section CRC ${cov.data_section}` : '', cov.summary ? `summary ${cov.summary}` : ''].filter(Boolean).join(' · ')),
   );
   $('result-interpretation').textContent = `${r.interpretation} "Skipped" means no conclusion was drawn.`;
+  renderRecovered(r.recovered);
+  renderBag(r.bag);
 
   $('result-checks').replaceChildren(
     ...r.checks.map((c, i) => {
