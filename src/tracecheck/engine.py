@@ -330,7 +330,7 @@ def _evaluate(result: dict, c: dict, r: ScanResult, finding: Callable, first_fil
                     explain = rec_events.explainer(wins, topic, t["max_gap_ns"])
                 sample, total, xs, xtotal = tr.sorted_gaps(explain)
 
-                def point(a):
+                def point(a, tr=tr, cid=cid, basis=basis):
                     f = tr.files[a] if tr.files is not None else None
                     return dict(_loc(tr.loc_a[a], tr.loc_b[a], f), message_ordinal=tr.ords[a], channel_id=cid,
                                 **{basis: tr.times[a]})  # fmt: skip
@@ -487,7 +487,7 @@ def analyze_bag_files(
                 got.append(r)
             else:
                 results = got
-                for f, r in zip(todo, results):
+                for f, r in zip(todo, results, strict=True):
                     f.update(scan="summary only", messages=r.stats["messages"])
         if not results:
             plan_fn = _plan(c)
@@ -557,7 +557,7 @@ def _merge(results: list[ScanResult], ctx: BagContext) -> ScanResult:
         else:
             m.stats[k] = round(sum(vals), 3) if k == "seconds" else sum(vals)
     m.metadata = [dict(md, location={"file": name, **md["location"]})
-                  for name, x in zip(ctx.names, results) for md in x.metadata]  # fmt: skip
+                  for name, x in zip(ctx.names, results, strict=True) for md in x.metadata]  # fmt: skip
     if first.mode == "fast":
         counts: dict[int, int] = {}
         for i, x in enumerate(results):

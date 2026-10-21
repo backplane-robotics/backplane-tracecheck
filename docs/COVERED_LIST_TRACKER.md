@@ -13,8 +13,8 @@ All content lives in one file: [`web/public/data/covered-list-robots.json`](../w
 
 ## Adding or verifying an entry
 
-1. Download the Public Notice PDF from FCC EDOCS (for example `DA-26-996A1.pdf`). Keep it in the project root; root-level
-   `DA-*.pdf` files are git-ignored and are never committed.
+1. Download the Public Notice PDF from FCC EDOCS (for example `DA-26-996A1.pdf`). Keep it in the project root; PDF
+   files are git-ignored everywhere in the repository and are never committed.
 2. Add or edit the entry in the JSON file:
    - `id`: short lowercase name, letters, digits and hyphens (for example `acme-x100`). Must be unique.
    - `manufacturer`, `equipment` (list the models exactly as the FCC names them), `category`, `status`.

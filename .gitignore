@@ -1,9 +1,10 @@
 # Local-only material (old reports, governance files, MVP evidence). Never committed.
 archive/
 Backplane Robotics Developer Directions.md
-# Local copies of FCC source documents used to verify the Covered List tracker.
-/DA-*.pdf
-/da-*.pdf
+*.local.md
+# Source documents (FCC Public Notices and similar) are kept locally for checking, never committed.
+# The site links to the official copies online.
+*.pdf
 
 # Python
 .venv/

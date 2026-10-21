@@ -154,7 +154,7 @@ def write_bag_sample(folder, name, seconds=20, splits=(7, 14), metadata=True):
     start = 1_760_000_000_000_000_000
     bounds = [0, *splits, seconds]
     files, totals = [], {}
-    for n, (a, b) in enumerate(zip(bounds, bounds[1:])):
+    for n, (a, b) in enumerate(zip(bounds, bounds[1:], strict=False)):
         fname = f'{name}_{n}.mcap'
         counts = write_fleet_sample(folder/fname, seconds=seconds, span=(a, b))
         files.append((fname, a, b, sum(counts.values())))
