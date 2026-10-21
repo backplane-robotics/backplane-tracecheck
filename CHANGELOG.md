@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-20
+
 ### Added
 - **Incomplete recordings.** A file that ends before its MCAP footer (for example, a recorder that stopped mid-write, or a file cut off while copying) now gets a specific C01 finding and a `recovered` report section: readable bytes, complete messages, log-time span, per-topic counts, and whether all message data was read. The other checks stay skipped; they are not evaluated on partial data. Shown in the CLI summary, the web app and the HTML report.
 - `interrupted-zstd.mcap` synthetic example and web demo.

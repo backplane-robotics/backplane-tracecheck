@@ -9,7 +9,7 @@ import { EVENT_LIMIT, covered, explainer, windows } from './events.js';
 import { PyFloat, dumps } from './json.js';
 import { BagContext, DEFAULT_LIMITS, META_PAIRS_LIMIT, META_VALUE_LIMIT, ScanTruncated, TEXT_LIMIT, scanFast, scanFull } from './reader.js';
 
-export const VERSION = '0.2.0';
+export const VERSION = '0.3.0';
 export const REPORT_VERSION = 2;
 export const NAMES = [
   'Readable bounded MCAP scan',
