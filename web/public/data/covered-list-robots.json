@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "last_updated": "2026-10-20",
+  "last_updated": "2026-10-28",
   "covered_list_url": "https://www.fcc.gov/supplychain/coveredlist",
   "designation": {
     "notice_number": "DA 26-786",
@@ -21,7 +21,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-957A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-10-20"
+      "last_checked": "2026-10-28"
     },
     {
       "id": "anscer-ar-amr",
@@ -35,7 +35,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-996A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-10-20"
+      "last_checked": "2026-10-28"
     },
     {
       "id": "matic-floor-cleaner",
@@ -49,7 +49,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1063A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-10-20"
+      "last_checked": "2026-10-28"
     },
     {
       "id": "volley-agv-amr",
@@ -63,7 +63,49 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1114A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-10-20"
+      "last_checked": "2026-10-28"
+    },
+    {
+      "id": "vulcan-sourccey",
+      "manufacturer": "Vulcan Robotics Inc.",
+      "equipment": ["Sourccey mobile robotic platform"],
+      "category": "Mobile robotic platform",
+      "notice_number": "DA 26-1130",
+      "date_announced": "2026-10-21",
+      "status": "Conditional approval",
+      "conditions_summary": "Announced in DA 26-1130 alongside a router approval. The approval names the Sourccey platform only; no model numbers are listed. Exemption is subject to continuing “compliance with the onshoring plan[s] outlined in [their] conditional approval application[s]” and “pursuant to updated vetting of [their] products.” No termination date; failure to comply or a misrepresentation could end the approval and return the equipment to the Covered List.",
+      "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1130A1.pdf",
+      "secondary_sources": [],
+      "verified_against_primary": true,
+      "last_checked": "2026-10-28"
+    },
+    {
+      "id": "haystack-violet-ai",
+      "manufacturer": "Haystack Robotics, Inc.",
+      "equipment": ["Violet AI robotic device"],
+      "category": "Robotic device (type not stated in notice)",
+      "notice_number": "DA 26-1154",
+      "date_announced": "2026-10-23",
+      "status": "Conditional approval",
+      "conditions_summary": "Announced in DA 26-1154 alongside drone, router and power inverter approvals. The notice names the device only; no model numbers or device type are given. Conditional approvals without a termination date remain effective while the company abides by its onshoring plan and updated product vetting; failure to comply or a misrepresentation could end the approval and return the equipment to the Covered List.",
+      "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1154A1.pdf",
+      "secondary_sources": [],
+      "verified_against_primary": true,
+      "last_checked": "2026-10-28"
+    },
+    {
+      "id": "t-robotics-agv-class",
+      "manufacturer": "T-Robotics Co., Ltd.",
+      "equipment": ["Entire product class of automated guided vehicles (AGVs)"],
+      "category": "Automated guided vehicle (AGV)",
+      "notice_number": "DA 26-1154",
+      "date_announced": "2026-10-23",
+      "status": "Conditional approval",
+      "conditions_summary": "The notice covers T-Robotics’ “entire product class of automated guided vehicles (AGVs)” rather than named models. Conditional approvals without a termination date remain effective while the company abides by its onshoring plan and updated product vetting; failure to comply or a misrepresentation could end the approval and return the equipment to the Covered List.",
+      "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1154A1.pdf",
+      "secondary_sources": [],
+      "verified_against_primary": true,
+      "last_checked": "2026-10-28"
     }
   ]
 }
