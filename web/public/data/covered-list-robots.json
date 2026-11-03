@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "last_updated": "2026-10-28",
+  "last_updated": "2026-11-03",
   "covered_list_url": "https://www.fcc.gov/supplychain/coveredlist",
   "designation": {
     "notice_number": "DA 26-786",
@@ -21,7 +21,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-957A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-10-28"
+      "last_checked": "2026-11-03"
     },
     {
       "id": "anscer-ar-amr",
@@ -35,7 +35,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-996A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-10-28"
+      "last_checked": "2026-11-03"
     },
     {
       "id": "matic-floor-cleaner",
@@ -49,7 +49,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1063A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-10-28"
+      "last_checked": "2026-11-03"
     },
     {
       "id": "volley-agv-amr",
@@ -63,7 +63,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1114A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-10-28"
+      "last_checked": "2026-11-03"
     },
     {
       "id": "vulcan-sourccey",
@@ -77,7 +77,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1130A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-10-28"
+      "last_checked": "2026-11-03"
     },
     {
       "id": "haystack-violet-ai",
@@ -91,7 +91,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1154A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-10-28"
+      "last_checked": "2026-11-03"
     },
     {
       "id": "t-robotics-agv-class",
@@ -105,7 +105,91 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1154A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-10-28"
+      "last_checked": "2026-11-03"
+    },
+    {
+      "id": "arapl-maia2000-atlas-ac2000",
+      "manufacturer": "ARAPL RaaS Private Limited",
+      "equipment": ["Autonomous Pallet Truck/Maia2000 V1, V3, & V4", "Autonomous counterbalance Forklift/Atlas AC2000 V1, V2, and V4"],
+      "category": "Autonomous pallet truck and forklift",
+      "notice_number": "DA 26-1181",
+      "date_announced": "2026-10-30",
+      "status": "Conditional approval",
+      "conditions_summary": "Announced in DA 26-1181 alongside drone and power inverter approvals. The notice describes the equipment as “automated mobile robotic equipment.” Exemption is subject to continuing “compliance with the onshoring plan[s] outlined in [their] conditional approval application[s]” and “pursuant to updated vetting of [their] products”; per the notice, these conditions apply unless superseded by another National Security Determination. No termination date; failure to comply or a misrepresentation could end the approval and return the equipment to the Covered List.",
+      "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1181A1.pdf",
+      "secondary_sources": [],
+      "verified_against_primary": true,
+      "last_checked": "2026-11-03"
+    },
+    {
+      "id": "ati-motors-sherpa-flexfork",
+      "manufacturer": "ATI Motors, Inc.",
+      "equipment": ["Sherpa 3K", "Sherpa 10K", "FlexFork 1500", "FlexFork 3000", "Sherpa Mecha"],
+      "category": "Robotic platform",
+      "notice_number": "DA 26-1181",
+      "date_announced": "2026-10-30",
+      "status": "Conditional approval",
+      "conditions_summary": "The notice lists these five as “robotic platforms.” Exemption is subject to continuing “compliance with the onshoring plan[s] outlined in [their] conditional approval application[s]” and “pursuant to updated vetting of [their] products”; per the notice, these conditions apply unless superseded by another National Security Determination. No termination date; failure to comply or a misrepresentation could end the approval and return the equipment to the Covered List.",
+      "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1181A1.pdf",
+      "secondary_sources": [],
+      "verified_against_primary": true,
+      "last_checked": "2026-11-03"
+    },
+    {
+      "id": "lightberry-lumi",
+      "manufacturer": "Lightberry Holdings, Inc.",
+      "equipment": ["Lumi Interactive mobile robots"],
+      "category": "Interactive mobile robot",
+      "notice_number": "DA 26-1181",
+      "date_announced": "2026-10-30",
+      "status": "Conditional approval",
+      "conditions_summary": "The notice names the product line only; no model numbers are listed. Exemption is subject to continuing “compliance with the onshoring plan[s] outlined in [their] conditional approval application[s]” and “pursuant to updated vetting of [their] products”; per the notice, these conditions apply unless superseded by another National Security Determination. No termination date; failure to comply or a misrepresentation could end the approval and return the equipment to the Covered List.",
+      "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1181A1.pdf",
+      "secondary_sources": [],
+      "verified_against_primary": true,
+      "last_checked": "2026-11-03"
+    },
+    {
+      "id": "sunscout-platforms-solar-shelter",
+      "manufacturer": "SunScout Holdings, Inc.",
+      "equipment": ["SunScout Eco, Pro, and Promax Robotic Platforms", "SunScout Solar Shelter Mobile Energy Systems"],
+      "category": "Robotic platform and mobile energy system",
+      "notice_number": "DA 26-1181",
+      "date_announced": "2026-10-30",
+      "status": "Conditional approval",
+      "conditions_summary": "Equipment is listed as the notice names it. Exemption is subject to continuing “compliance with the onshoring plan[s] outlined in [their] conditional approval application[s]” and “pursuant to updated vetting of [their] products”; per the notice, these conditions apply unless superseded by another National Security Determination. No termination date; failure to comply or a misrepresentation could end the approval and return the equipment to the Covered List.",
+      "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1181A1.pdf",
+      "secondary_sources": [],
+      "verified_against_primary": true,
+      "last_checked": "2026-11-03"
+    },
+    {
+      "id": "swap-robotics-v7",
+      "manufacturer": "Swap Robotics Canada Inc.",
+      "equipment": ["V7 robot"],
+      "category": "Robot (type not stated in notice)",
+      "notice_number": "DA 26-1181",
+      "date_announced": "2026-10-30",
+      "status": "Conditional approval",
+      "conditions_summary": "The notice names the V7 robot only; no device type is given. Exemption is subject to continuing “compliance with the onshoring plan[s] outlined in [their] conditional approval application[s]” and “pursuant to updated vetting of [their] products”; per the notice, these conditions apply unless superseded by another National Security Determination. No termination date; failure to comply or a misrepresentation could end the approval and return the equipment to the Covered List.",
+      "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1181A1.pdf",
+      "secondary_sources": [],
+      "verified_against_primary": true,
+      "last_checked": "2026-11-03"
+    },
+    {
+      "id": "omron-ld-150-ld-300",
+      "manufacturer": "OMRON Holdings, Inc.",
+      "equipment": ["LD-150", "LD-300"],
+      "category": "Robotic platform",
+      "notice_number": "DA 26-1181",
+      "date_announced": "2026-10-30",
+      "status": "Conditional approval",
+      "conditions_summary": "The notice lists the LD-150 and LD-300 as “robotic platforms.” Exemption is subject to continuing “compliance with the onshoring plan[s] outlined in [their] conditional approval application[s]” and “pursuant to updated vetting of [their] products”; per the notice, these conditions apply unless superseded by another National Security Determination. No termination date; failure to comply or a misrepresentation could end the approval and return the equipment to the Covered List.",
+      "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1181A1.pdf",
+      "secondary_sources": [],
+      "verified_against_primary": true,
+      "last_checked": "2026-11-03"
     }
   ]
 }
