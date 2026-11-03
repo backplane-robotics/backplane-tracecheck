@@ -26,6 +26,7 @@
 .context-list { margin: 0; padding-left: 1.2em; display: grid; gap: 10px; color: var(--muted); }
 .context-list b { color: var(--text); font-weight: 600; }
 .context-list li::marker { color: var(--teal); }
+.context-list a { color: var(--teal); text-decoration: underline; text-underline-offset: 3px; }
 
 .tracker-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
 .tracker-head p { margin: 0; font-size: 0.85rem; }

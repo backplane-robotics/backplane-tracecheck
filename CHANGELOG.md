@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Website
+- New article: plain-language summary of the FCC test-lab location rules (FCC 26-73) for robotics makers, at
+  `/insights/fcc-test-lab-rules/`, linked from the Covered List tracker.
+- `sitemap.xml` lists the article and has last-modified dates; a site test checks every page's title, description,
+  canonical URL and sitemap entry.
+
 ## [0.4.0] - 2026-11-03
 
 ### Added

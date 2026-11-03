@@ -17,6 +17,7 @@ export default defineConfig({
         main: resolve(import.meta.dirname, 'index.html'),
         tracecheck: resolve(import.meta.dirname, 'tracecheck/index.html'),
         coveredListRobots: resolve(import.meta.dirname, 'tools/covered-list-robots/index.html'),
+        fccTestLabRules: resolve(import.meta.dirname, 'insights/fcc-test-lab-rules/index.html'),
       },
     },
   },
