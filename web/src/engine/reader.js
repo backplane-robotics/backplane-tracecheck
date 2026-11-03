@@ -20,6 +20,69 @@ export const META_VALUE_LIMIT = 65536;
 export const META_PAIRS_LIMIT = 100;
 const FOOTER_RECORD_SIZE = 1 + 8 + 20;
 const SUPPORTED = ['', 'zstd', 'lz4'];
+// Full scan: data-section Chunk/Attachment/Metadata records remembered for the summary index check.
+export const INDEX_TARGET_LIMIT = 1_000_000;
+export const BAD_METADATA_INDEX = 'summary metadata index does not point to a Metadata record (checked with a full scan instead)';
+const INDEX_KINDS = [['chunk', 'Chunk'], ['attachment', 'Attachment'], ['metadata', 'Metadata']];
+const KIND_LABEL = Object.fromEntries(INDEX_KINDS);
+const STAT_FIELDS = ['message_count', 'schema_count', 'channel_count', 'attachment_count', 'metadata_count', 'chunk_count',
+  'message_start_time', 'message_end_time'];
+const an = (w) => ('AEIOU'.includes(w[0]) ? `an ${w}` : `a ${w}`);
+const big = (x) => (typeof x === 'bigint' ? x : BigInt(x));
+
+/**
+ * Compare the summary section's indexes and Statistics with what a full scan read (port of reader.check_index).
+ * `targets`: Map file offset -> [kind, recordLength, details] for data-section Chunk/Attachment/Metadata records, or
+ * null when there were too many. `entries`: { chunk, attachment, metadata } -> [offset, length, details][] in summary
+ * order. Issues are listed in the same fixed order as the Python implementation.
+ */
+export function checkIndex(targets, entries, statistics, observed) {
+  const issues = [];
+  const present = INDEX_KINDS.some(([k]) => entries[k].length);
+  if (targets === null)
+    return { summary_index: present ? 'present' : 'absent', entries_checked: 0, statistics: 'not checked', issues: [], limit_reached: true };
+  let checked = 0;
+  for (const [kind, label] of INDEX_KINDS) {
+    let actual = 0;
+    for (const t of targets.values()) if (t[0] === kind) actual++;
+    entries[kind].forEach(([offset, length, details], i) => {
+      checked++;
+      const t = targets.get(offset);
+      let problem;
+      if (t === undefined) problem = `does not point to the start of ${an(label)} record`;
+      else if (t[0] !== kind) problem = `points to ${an(KIND_LABEL[t[0]])} record, not ${an(label)} record`;
+      else if (t[1] !== length) problem = `gives a length of ${length} bytes; the ${label} record there is ${t[1]} bytes`;
+      else if (t[2] !== details) problem = `describes the ${label} record differently from the record itself`;
+      else return;
+      issues.push({ index: kind, entry: i, offset, length, problem });
+    });
+    if (entries[kind].length && entries[kind].length !== actual)
+      issues.push({ index: kind, problem: `indexes ${entries[kind].length} of the ${actual} ${label} records` });
+  }
+  let statsState = 'absent';
+  if (statistics !== null) {
+    statsState = 'agrees';
+    const hasMessages = observed.message_count > 0;
+    for (const k of STAT_FIELDS) {
+      if ((k === 'message_start_time' || k === 'message_end_time') && !hasMessages) continue;
+      if (big(statistics[k]) !== big(observed[k])) {
+        statsState = 'differs';
+        issues.push({ index: 'statistics', field: k, claimed: statistics[k], observed: observed[k] });
+      }
+    }
+    const claimed = statistics.channel_message_counts;
+    const seen = observed.channel_message_counts;
+    for (const cid of [...new Set([...claimed.keys(), ...seen.keys()])].sort((a, b) => a - b)) {
+      const a = claimed.get(cid) ?? 0;
+      const b = seen.get(cid) ?? 0;
+      if (big(a) !== big(b)) {
+        statsState = 'differs';
+        issues.push({ index: 'statistics', field: 'channel_message_counts', channel_id: cid, claimed: a, observed: b });
+      }
+    }
+  }
+  return { summary_index: present ? 'present' : 'absent', entries_checked: checked, statistics: statsState, issues, limit_reached: false };
+}
 
 export const DEFAULT_LIMITS = Object.freeze({
   max_record_bytes: 256 * MiB,
@@ -213,6 +276,8 @@ export class Track {
     this.regBad = [];
     this.gapBad = [];
     this.seqBadN = this.regBadN = this.gapBadN = 0;
+    this.regMax = 0n; // largest backwards jump, in ns, and the first message pair where it occurred
+    this.regMaxPair = null;
     if (cfg && cfg.maxGap !== null) {
       this.times = new Grow(BigUint64Array);
       this.ords = new Grow(Float64Array);
@@ -239,6 +304,10 @@ export class Track {
         this.monotonic = false;
         this.regBadN++;
         if (this.regBad.length < this.ev) this.regBad.push([prev, m]);
+        if (pt - t > this.regMax) {
+          this.regMax = pt - t;
+          this.regMaxPair = [prev, m];
+        }
       } else if (this.monotonic && cfg.maxGap !== null && t - pt > cfg.maxGap) {
         this.gapBadN++;
         if (this.gapBad.length < this.ev) this.gapBad.push([prev, m]);
@@ -298,7 +367,7 @@ function mapEquals(a, b) {
 function newResult(mode, size) {
   return { mode, size, sha256: null, profile: null, schemas: new Map(), channels: new Map(), metadata: [],
     tracks: new Map(), counts: null, crc: {}, compression: {}, unknown: 0, stats: {}, fastFallback: null,
-    completeBytes: 0, dataEndSeen: false, logTimeRange: null, recorderEvents: null, events: [] };
+    completeBytes: 0, dataEndSeen: false, logTimeRange: null, recorderEvents: null, events: [], index: null };
 }
 
 class Registry {
@@ -491,6 +560,22 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
   let tLo = null;
   let tHi = null;
   const eventKind = new Map(); // channel id -> recognised recorder event type
+  // Summary index check (checkIndex): where the data records are, and what the summary says about them.
+  const targets = new Map();
+  const entries = { chunk: [], attachment: [], metadata: [] };
+  let nEntries = 0;
+  let overflow = false;
+  let statistics = null;
+  const cidCounts = new Map();
+  let metadataRecords = 0;
+  const remember = (offset, kind, length, details) => {
+    if (targets.size >= INDEX_TARGET_LIMIT) overflow = true;
+    else if (!overflow) targets.set(offset, [kind, length, details]);
+  };
+  const addEntry = (kind, offset, length, details) => {
+    if (++nEntries > INDEX_TARGET_LIMIT) overflow = true;
+    else if (!overflow) entries[kind].push([offset, length, details]);
+  };
 
   const onEvent = (kind, buf, body, end, logT) => {
     let info = r.recorderEvents;
@@ -515,6 +600,7 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
     const tr = tracks.get(lmap.get(cid));
     if (ended || tr === undefined) throw new ScanError('message after DataEnd or undefined channel');
     if (++stats.messages > limits.max_messages) throw new ScanError(`message count exceeds ${limits.max_messages}`);
+    cidCounts.set(cid, (cidCounts.get(cid) || 0) + 1);
     const logT = dv.getBigUint64(body + 6, true);
     if (tLo === null || logT < tLo) tLo = logT;
     if (tHi === null || logT > tHi) tHi = logT;
@@ -575,10 +661,39 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
         if (src.pos !== size) throw new ScanError('trailing bytes after footer magic');
         break;
       }
+      if (ended && [OP.CHUNK_INDEX, OP.ATTACHMENT_INDEX, OP.METADATA_INDEX, OP.STATISTICS].includes(op)) {
+        if (length > limits.max_record_bytes) throw new ScanError(`record length exceeds ${limits.max_record_bytes} byte limit`);
+        const c = new Cursor(await src.read(length));
+        if (op === OP.CHUNK_INDEX) {
+          const t0 = c.u64();
+          const t1 = c.u64();
+          const at = c.u64n();
+          const ln = c.u64n();
+          c.take(c.u32()); // message index offsets
+          c.u64(); // message index length
+          const comp = c.string();
+          const cs = c.u64();
+          addEntry('chunk', at, ln, `${comp}|${cs}|${c.u64()}|${t0}|${t1}`);
+        } else if (op === OP.ATTACHMENT_INDEX) {
+          const at = c.u64n();
+          addEntry('attachment', at, c.u64n(), '');
+        } else if (op === OP.METADATA_INDEX) {
+          const at = c.u64n();
+          const ln = c.u64n();
+          addEntry('metadata', at, ln, c.string());
+        } else {
+          statistics = { message_count: c.u64n(), schema_count: c.u16(), channel_count: c.u32(), attachment_count: c.u32(),
+            metadata_count: c.u32(), chunk_count: c.u32(), message_start_time: c.u64(), message_end_time: c.u64(),
+            channel_message_counts: c.u16u64Map() };
+        }
+        continue;
+      }
       if (![OP.HEADER, OP.SCHEMA, OP.CHANNEL, OP.MESSAGE, OP.CHUNK, OP.METADATA, OP.DATA_END].includes(op)) {
         await src.skip(length);
-        if (op === OP.ATTACHMENT) stats.attachments_skipped++;
-        else if (!KNOWN(op)) r.unknown++;
+        if (op === OP.ATTACHMENT) {
+          stats.attachments_skipped++;
+          if (!ended) remember(offset, 'attachment', 9 + length, '');
+        } else if (!KNOWN(op)) r.unknown++;
         continue;
       }
       if (length > limits.max_record_bytes) throw new ScanError(`record length exceeds ${limits.max_record_bytes} byte limit`);
@@ -595,7 +710,11 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
         stats.unchunked_messages++;
         onMessage(buf, c.dv, 0, length, offset, -1);
       } else if (op === OP.METADATA) {
-        if (!ended) reg.metadata(c, loc);
+        if (!ended) {
+          reg.metadata(c, loc);
+          metadataRecords++;
+          remember(offset, 'metadata', 9 + length, r.metadata[r.metadata.length - 1].name);
+        }
       } else if (op === OP.DATA_END) {
         if (ended) throw new ScanError('repeated DataEnd');
         ended = true;
@@ -608,13 +727,14 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
       } else if (op === OP.CHUNK) {
         if (ended) throw new ScanError('chunk after DataEnd');
         stats.chunks++;
-        c.u64();
-        c.u64();
+        const t0 = c.u64();
+        const t1 = c.u64();
         const usizeBig = c.u64();
         const ucrc = c.u32();
         const compression = c.string();
         const n = c.u64n();
         const p = c.take(n);
+        remember(offset, 'chunk', 9 + length, `${compression}|${n}|${usizeBig}|${t0}|${t1}`);
         if (!SUPPORTED.includes(compression)) throw new ScanError(`unsupported compression: '${compression.slice(0, 40)}'`);
         let inner;
         if (compression === '') {
@@ -645,6 +765,10 @@ export async function scanFull(blob, plan, limits = DEFAULT_LIMITS, progress = n
     r.sha256 = bytesToHex(src.sha.digest());
     r.stats.seconds = Math.round(performance.now() - started) / 1000;
     r.logTimeRange = tLo === null ? null : [tLo, tHi];
+    const observed = { message_count: stats.messages, schema_count: r.schemas.size, channel_count: r.channels.size,
+      attachment_count: stats.attachments_skipped, metadata_count: metadataRecords, chunk_count: stats.chunks,
+      message_start_time: tLo ?? 0n, message_end_time: tHi ?? 0n, channel_message_counts: cidCounts };
+    r.index = checkIndex(overflow ? null : targets, entries, statistics, observed);
     if (ctx) {
       ctx.base += stats.messages;
       ctx.tracked = tracked;
@@ -739,10 +863,12 @@ export async function scanFast(blob, limits = DEFAULT_LIMITS) {
   if (metadataIndex.length < statistics.metadata_count) return (r.fastFallback = 'summary does not index every metadata record'), r;
 
   for (const [offset, length] of metadataIndex) {
-    if (!(length >= 9 && length <= limits.max_record_bytes)) throw new ScanError('metadata index length invalid or above limit');
+    // A wrong index is worth reporting, not a reason to stop: fall back to a full scan, which reports it in C01.
+    if (!(length >= 9 && length <= limits.max_record_bytes) || offset < headerEnd || offset + length > summaryStart)
+      return (r.fastFallback = BAD_METADATA_INDEX), r;
     const rec = await readAt(offset, length);
     const rc = new Cursor(rec, 1);
-    if (rec[0] !== OP.METADATA || rc.u64() !== BigInt(length - 9)) throw new ScanError('metadata index does not point to a Metadata record');
+    if (rec[0] !== OP.METADATA || rc.u64() !== BigInt(length - 9)) return (r.fastFallback = BAD_METADATA_INDEX), r;
     reg.metadata(new Cursor(rec, 9), { file_offset: offset });
   }
   r.counts = new Map([...r.channels.keys()].map((cid) => [cid, statistics.channel_message_counts.get(cid) || 0]));

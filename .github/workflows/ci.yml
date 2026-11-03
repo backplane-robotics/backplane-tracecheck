@@ -16,12 +16,18 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         python: ["3.11", "3.13"]
+        # Oldest supported mcap (used to write the examples), plus the 1.6 line that Foxglove's SDK now requires.
+        mcap: ["1.5.0"]
+        include:
+          - os: ubuntu-latest
+            python: "3.13"
+            mcap: "1.6.*"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install -e ".[dev]"
+      - run: python -m pip install -e ".[dev]" "mcap==${{ matrix.mcap }}"
       - run: python -m ruff check src tools --select E,F,W,B --ignore E501,E701,E702,E731,E741
       - run: python -m pytest -q
 

@@ -164,6 +164,42 @@
       }
     },
     {
+      "file": "bad-index.mcap",
+      "contract": "demo-contract.json",
+      "overall": "warn",
+      "scan_complete": true,
+      "checks": {
+        "C01": "warn",
+        "C02": "pass",
+        "C03": "pass",
+        "C04": "pass",
+        "C05": "pass",
+        "C06": "pass",
+        "C07": "pass",
+        "C08": "pass",
+        "C09": "pass",
+        "C10": "pass"
+      }
+    },
+    {
+      "file": "indexless-rosbag2.mcap",
+      "contract": "demo-contract.json",
+      "overall": "pass",
+      "scan_complete": true,
+      "checks": {
+        "C01": "pass",
+        "C02": "pass",
+        "C03": "pass",
+        "C04": "pass",
+        "C05": "pass",
+        "C06": "pass",
+        "C07": "pass",
+        "C08": "pass",
+        "C09": "pass",
+        "C10": "pass"
+      }
+    },
+    {
       "file": "clean-zstd.mcap",
       "contract": "demo-contract.json",
       "fast": true,
@@ -199,6 +235,25 @@
         "C08": "skipped",
         "C09": "skipped",
         "C10": "skipped"
+      }
+    },
+    {
+      "file": "bad-index.mcap",
+      "contract": "demo-contract.json",
+      "fast": true,
+      "overall": "warn",
+      "scan_complete": true,
+      "checks": {
+        "C01": "warn",
+        "C02": "pass",
+        "C03": "pass",
+        "C04": "pass",
+        "C05": "pass",
+        "C06": "pass",
+        "C07": "pass",
+        "C08": "pass",
+        "C09": "pass",
+        "C10": "pass"
       }
     },
     {

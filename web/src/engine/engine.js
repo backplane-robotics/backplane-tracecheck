@@ -7,9 +7,9 @@ import { META_LIMIT, META_NAME, plan as bagPlan } from './bag.js';
 import { num, validate } from './contract.js';
 import { EVENT_LIMIT, covered, explainer, windows } from './events.js';
 import { PyFloat, dumps } from './json.js';
-import { BagContext, DEFAULT_LIMITS, META_PAIRS_LIMIT, META_VALUE_LIMIT, ScanTruncated, TEXT_LIMIT, scanFast, scanFull } from './reader.js';
+import { BagContext, DEFAULT_LIMITS, INDEX_TARGET_LIMIT, META_PAIRS_LIMIT, META_VALUE_LIMIT, ScanTruncated, TEXT_LIMIT, scanFast, scanFull } from './reader.js';
 
-export const VERSION = '0.3.0';
+export const VERSION = '0.4.0';
 export const REPORT_VERSION = 2;
 export const NAMES = [
   'Readable bounded MCAP scan',
@@ -42,6 +42,14 @@ const FULL_DETAIL = 'Bounded scan completed. Data-section, chunk and summary CRC
   'Missing CRC warns only when some message data had no CRC coverage. This is not full MCAP conformance validation.';
 const FAST_DETAIL = 'Fast mode: header, footer and summary section read and summary CRC checked when present. The data section was ' +
   'not scanned, so message-level corruption is not detected.';
+const INDEX_OK = 'Summary index entries point to matching records, and the summary statistics agree with the records read.';
+const INDEX_STATS_ONLY = 'The summary has no index entries; its statistics agree with the records read.';
+const INDEX_INDEX_ONLY = 'Summary index entries point to matching records. The summary has no statistics record.';
+const INDEX_BAD = 'The summary index or statistics disagree with the records read. Every record was read directly, so the other ' +
+  'checks are not affected, but tools that rely on the index (for example to list metadata or attachments, or to jump to a time) ' +
+  'may show wrong or missing data. A writer bug of this kind was fixed in MCAP TypeScript 2.4.0.';
+const INDEX_NONE = 'The file has no summary index or statistics to compare with the records.';
+const INDEX_LIMIT = `More than ${INDEX_TARGET_LIMIT.toLocaleString('en-US')} indexed records; the summary index was not checked.`;
 const BAG_BY_NAME = 'The .mcap files in the folder were checked in name order; message counts could not be compared.';
 const BAG_NO_META = 'No metadata.yaml in the folder. rosbag2 writes it when a recording is closed, so a recorder that ' +
   'stopped unexpectedly may leave none; it can also be left out when copying. ' + BAG_BY_NAME;
@@ -126,7 +134,32 @@ function scanned(result, r, missing, ignoreCrc, finding, extra = {}) {
   const policy = ignoreCrc ? 'ignore' : 'warn';
   if (r.mode === 'full') {
     finding(1, status, FULL_DETAIL, null, { unknown_records_skipped: r.unknown, missing_crc_policy: policy, crc_coverage_complete: !missing, ...extra });
+    indexFinding(r.index, finding);
   } else finding(1, status, FAST_DETAIL, null, { unknown_records_skipped: r.unknown, missing_crc_policy: policy, ...extra });
+}
+
+/** C01: do the summary indexes and statistics agree with the records a full scan read? */
+function indexFinding(ix, finding) {
+  if (!ix) return;
+  const facts = { summary_index: ix.summary_index, index_entries_checked: ix.entries_checked, summary_statistics: ix.statistics };
+  if (ix.limit_reached) finding(1, 'skipped', INDEX_LIMIT, null, facts);
+  else if (ix.issues.length) finding(1, 'warn', INDEX_BAD, ix.issues, facts);
+  else if (ix.summary_index === 'absent' && ix.statistics === 'absent') finding(1, 'skipped', INDEX_NONE, null, facts);
+  else if (ix.summary_index === 'absent') finding(1, 'pass', INDEX_STATS_ONLY, null, facts);
+  else if (ix.statistics === 'absent') finding(1, 'pass', INDEX_INDEX_ONLY, null, facts);
+  else finding(1, 'pass', INDEX_OK, null, facts);
+}
+
+/** Combine the per-file summary index checks of a bag; each issue names its file. */
+function mergeIndex(parts, names) {
+  const stats = parts.map((p) => p.statistics);
+  return {
+    summary_index: parts.some((p) => p.summary_index === 'present') ? 'present' : 'absent',
+    entries_checked: parts.reduce((a, p) => a + p.entries_checked, 0),
+    statistics: stats.includes('differs') ? 'differs' : new Set(stats).size === 1 ? stats[0] : 'mixed',
+    issues: parts.flatMap((p, i) => p.issues.map((x) => ({ file: names[i], ...x }))),
+    limit_reached: parts.some((p) => p.limit_reached),
+  };
 }
 
 /**
@@ -273,8 +306,12 @@ function evaluate(result, c, r, finding, firstFile = null) {
         }
       } else finding(7, 'skipped', 'Gap threshold absent or fewer than two messages.', null, ctx);
       if (t.get('check_regression') === true && n >= 2) {
+        // The largest backwards jump helps tell small reordering jitter from a clock reset.
+        const worst = tr.regBadN
+          ? { largest_regression_ns: tr.regMax, largest_regression: { previous: msg(cid, tr.regMaxPair[0]), current: msg(cid, tr.regMaxPair[1]) } }
+          : {};
         finding(8, tr.regBadN ? 'fail' : 'pass', 'Strictly decreasing timestamps in physical record order; equal values allowed.',
-          tr.regBad.map(([a, b]) => ({ previous: msg(cid, a), current: msg(cid, b) })), { time_basis: basis, ...ctx }, tr.regBadN);
+          tr.regBad.map(([a, b]) => ({ previous: msg(cid, a), current: msg(cid, b) })), { time_basis: basis, ...ctx, ...worst }, tr.regBadN);
       } else finding(8, 'skipped', 'Regression check disabled or fewer than two messages.', null, ctx);
       if (t.has('interval_ns')) {
         const [start, end] = t.get('interval_ns');
@@ -456,6 +493,7 @@ function merge(results, ctx) {
   m.schemas = ctx.schemas;
   m.channels = ctx.channels;
   m.tracks = ctx.tracks;
+  if (first.mode === 'full') m.index = mergeIndex(results.map((x) => x.index), ctx.names);
   const infos = results.map((x) => x.recorderEvents).filter((x) => x);
   if (infos.length) {
     const events = results.flatMap((x) => x.events);

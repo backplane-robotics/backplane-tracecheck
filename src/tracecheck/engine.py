@@ -17,6 +17,7 @@ from . import events as rec_events
 from .bag import META_LIMIT, META_NAME, plan as bag_plan
 from .contract import validate
 from .reader import (
+    INDEX_TARGET_LIMIT,
     META_PAIRS_LIMIT,
     META_VALUE_LIMIT,
     TEXT_LIMIT,
@@ -68,6 +69,16 @@ FULL_DETAIL = ("Bounded scan completed. Data-section, chunk and summary CRCs che
                "conformance validation.")  # fmt: skip
 FAST_DETAIL = ("Fast mode: header, footer and summary section read and summary CRC checked when present. The data "
                "section was not scanned, so message-level corruption is not detected.")  # fmt: skip
+INDEX_OK = ("Summary index entries point to matching records, and the summary statistics agree with the records "
+            "read.")  # fmt: skip
+INDEX_STATS_ONLY = "The summary has no index entries; its statistics agree with the records read."
+INDEX_INDEX_ONLY = "Summary index entries point to matching records. The summary has no statistics record."
+INDEX_BAD = ("The summary index or statistics disagree with the records read. Every record was read directly, so "
+             "the other checks are not affected, but tools that rely on the index (for example to list metadata or "
+             "attachments, or to jump to a time) may show wrong or missing data. A writer bug of this kind was fixed "
+             "in MCAP TypeScript 2.4.0.")  # fmt: skip
+INDEX_NONE = "The file has no summary index or statistics to compare with the records."
+INDEX_LIMIT = f"More than {INDEX_TARGET_LIMIT:,} indexed records; the summary index was not checked."
 BAG_BY_NAME = "The .mcap files in the folder were checked in name order; message counts could not be compared."
 BAG_NO_META = ("No metadata.yaml in the folder. rosbag2 writes it when a recording is closed, so a recorder that "
                "stopped unexpectedly may leave none; it can also be left out when copying. " + BAG_BY_NAME)  # fmt: skip
@@ -173,8 +184,29 @@ def _scanned(result: dict, r: ScanResult, missing: bool, ignore_crc: bool, findi
     if r.mode == "full":
         finding(1, status, FULL_DETAIL, unknown_records_skipped=r.unknown, missing_crc_policy=policy,
                 crc_coverage_complete=not missing, **extra)  # fmt: skip
+        _index_finding(r.index, finding)
     else:
         finding(1, status, FAST_DETAIL, unknown_records_skipped=r.unknown, missing_crc_policy=policy, **extra)
+
+
+def _index_finding(ix: dict | None, finding: Callable) -> None:
+    """C01: do the summary indexes and statistics agree with the records a full scan read?"""
+    if ix is None:
+        return
+    facts = {"summary_index": ix["summary_index"], "index_entries_checked": ix["entries_checked"],
+             "summary_statistics": ix["statistics"]}  # fmt: skip
+    if ix["limit_reached"]:
+        finding(1, "skipped", INDEX_LIMIT, **facts)
+    elif ix["issues"]:
+        finding(1, "warn", INDEX_BAD, evidence=ix["issues"], **facts)
+    elif ix["summary_index"] == "absent" and ix["statistics"] == "absent":
+        finding(1, "skipped", INDEX_NONE, **facts)
+    elif ix["summary_index"] == "absent":
+        finding(1, "pass", INDEX_STATS_ONLY, **facts)
+    elif ix["statistics"] == "absent":
+        finding(1, "pass", INDEX_INDEX_ONLY, **facts)
+    else:
+        finding(1, "pass", INDEX_OK, **facts)
 
 
 def analyze_stream(
@@ -357,9 +389,15 @@ def _evaluate(result: dict, c: dict, r: ScanResult, finding: Callable, first_fil
                 finding(7, "skipped", "Gap threshold absent or fewer than two messages.", **ctx)
             if t.get("check_regression") and n >= 2:
                 bad = [{"previous": _msg(cid, a), "current": _msg(cid, b)} for a, b in tr.reg_bad]
+                # The largest backwards jump helps tell small reordering jitter from a clock reset.
+                worst = {}
+                if tr.reg_bad_n:
+                    a, b = tr.reg_max_pair
+                    worst = {"largest_regression_ns": tr.reg_max,
+                             "largest_regression": {"previous": _msg(cid, a), "current": _msg(cid, b)}}  # fmt: skip
                 finding(8, "fail" if tr.reg_bad_n else "pass",
                         "Strictly decreasing timestamps in physical record order; equal values allowed.",
-                        bad, total=tr.reg_bad_n, time_basis=basis, **ctx)  # fmt: skip
+                        bad, total=tr.reg_bad_n, time_basis=basis, **ctx, **worst)  # fmt: skip
             else:
                 finding(8, "skipped", "Regression check disabled or fewer than two messages.", **ctx)
             if "interval_ns" in t:
@@ -567,6 +605,8 @@ def _merge(results: list[ScanResult], ctx: BagContext) -> ScanResult:
                 counts[lid] = counts.get(lid, 0) + x.counts.get(cid, 0)
         m.counts = counts
     m.schemas, m.channels, m.tracks = ctx.schemas, ctx.channels, ctx.tracks
+    if first.mode == "full":
+        m.index = _merge_index([x.index for x in results], ctx.names)
     infos = [x.recorder_events for x in results if x.recorder_events is not None]
     if infos:
         events = [e for x in results for e in x.events]
@@ -580,6 +620,18 @@ def _merge(results: list[ScanResult], ctx: BagContext) -> ScanResult:
                              "undecodable": sum(info["undecodable"] for info in infos), "limit_reached": limit,
                              "note": infos[0]["note"]}  # fmt: skip
     return m
+
+
+def _merge_index(parts: list[dict], names: list[str]) -> dict:
+    """Combine the per-file summary index checks of a bag; each issue names its file."""
+    stats = [p["statistics"] for p in parts]
+    return {
+        "summary_index": "present" if any(p["summary_index"] == "present" for p in parts) else "absent",
+        "entries_checked": sum(p["entries_checked"] for p in parts),
+        "statistics": "differs" if "differs" in stats else stats[0] if len(set(stats)) == 1 else "mixed",
+        "issues": [{"file": name, **i} for name, p in zip(names, parts, strict=True) for i in p["issues"]],
+        "limit_reached": any(p["limit_reached"] for p in parts),
+    }
 
 
 def _report_truncated_bag(result: dict, ctx: BagContext, results: list, r, f: dict, n_files: int, reason: str,

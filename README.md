@@ -96,7 +96,7 @@ Start minimal, then read the report's channel inventory to see the actual schema
 
 | ID | Check |
 |---|---|
-| C01 | Readable bounded MCAP scan (with CRC verification where present) |
+| C01 | Readable bounded MCAP scan (with CRC verification where present, and summary index agreement) |
 | C02 | Required topics contain messages |
 | C03 | Profile, schema and encoding |
 | C04 | Required file metadata |

@@ -10,6 +10,8 @@ const CSP = readFileSync(resolve(import.meta.dirname, 'public/_headers'), 'utf8'
 export default defineConfig({
   build: {
     target: 'es2022',
+    // Never inline fonts as data: URLs: the CSP allows fonts only from this site (font-src 'self').
+    assetsInlineLimit: (file) => (/\.(woff2?|ttf|otf)$/i.test(file) ? false : undefined),
     rollupOptions: {
       input: {
         main: resolve(import.meta.dirname, 'index.html'),

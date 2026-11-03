@@ -12,7 +12,7 @@ import { analyze, analyzeBag, reportJson } from '../src/engine/engine.js';
 import { decode as decodeEvent, eventType, explainer, windows } from '../src/engine/events.js';
 import { PyFloat, dumps, parse, pyFloatRepr } from '../src/engine/json.js';
 import { lz4Decompress } from '../src/engine/lz4.js';
-import { DEFAULT_LIMITS, decompress } from '../src/engine/reader.js';
+import { BAD_METADATA_INDEX, DEFAULT_LIMITS, checkIndex, decompress } from '../src/engine/reader.js';
 import { esc, render } from '../src/engine/report.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -283,5 +283,54 @@ describe('ROS 2 bag folders', () => {
     const r = await analyzeBag('fleet-bag', files, contract());
     expect(r.overall).toBe('warn');
     expect(r.bag.files.at(-1)).toMatchObject({ name: 'stray.mcap', listed: false, scan: 'not listed' });
+  });
+});
+
+describe('summary index agreement (C01)', () => {
+  const indexFinding = (r) => r.checks[0].findings.find((f) => 'summary_index' in f);
+  it('passes a clean file', async () => {
+    const f = indexFinding(await analyze(blobOf('clean.mcap'), contractOf('demo-contract.json'), { filename: 'clean.mcap' }));
+    expect(f).toMatchObject({ status: 'pass', summary_index: 'present', summary_statistics: 'agrees', index_entries_checked: 2 });
+  });
+  it('warns about each wrong index entry, and fast mode falls back to a full scan', async () => {
+    for (const fast of [false, true]) {
+      const r = await analyze(blobOf('bad-index.mcap'), contractOf('demo-contract.json'), { filename: 'bad-index.mcap', fast });
+      expect(r.overall).toBe('warn');
+      expect(r.scan_mode).toBe('full');
+      if (fast) expect(r.fast_mode_fallback).toBe(BAD_METADATA_INDEX);
+      expect(indexFinding(r).evidence.map((e) => [e.index, e.problem])).toEqual([
+        ['attachment', 'points to a Metadata record, not an Attachment record'],
+        ['metadata', 'does not point to the start of a Metadata record'],
+      ]);
+    }
+  });
+  it('reads an index-less file with rosbag2 metadata cleanly', async () => {
+    const r = await analyze(blobOf('indexless-rosbag2.mcap'), contractOf('demo-contract.json'), { filename: 'indexless-rosbag2.mcap' });
+    expect(r.overall).toBe('pass');
+    expect(indexFinding(r)).toMatchObject({ status: 'pass', summary_index: 'absent', summary_statistics: 'agrees' });
+  });
+  it('checkIndex reports wrong lengths, partial indexes and differing statistics in a fixed order', () => {
+    const observed = { message_count: 3, schema_count: 1, channel_count: 1, attachment_count: 0, metadata_count: 0, chunk_count: 2,
+      message_start_time: 10n, message_end_time: 30n, channel_message_counts: new Map([[1, 3]]) };
+    const targets = new Map([[100, ['chunk', 50, 'zstd|40|90|0|9']], [200, ['chunk', 60, 'zstd|50|99|10|19']]]);
+    const stats = { ...observed, message_count: 4, message_end_time: 31n, channel_message_counts: new Map([[1, 3], [2, 1]]) };
+    const ix = checkIndex(targets, { chunk: [[100, 51, 'zstd|40|90|0|9']], attachment: [], metadata: [] }, stats, observed);
+    expect(ix.issues.map((i) => i.problem ?? `${i.field}${i.channel_id ? `:${i.channel_id}` : ''}`)).toEqual([
+      'gives a length of 51 bytes; the Chunk record there is 50 bytes', 'indexes 1 of the 2 Chunk records',
+      'message_count', 'message_end_time', 'channel_message_counts:2']);
+    expect(ix.statistics).toBe('differs');
+    expect(checkIndex(null, { chunk: [], attachment: [], metadata: [] }, null, observed).limit_reached).toBe(true);
+  });
+});
+
+describe('C08 largest backwards jump', () => {
+  it('reports the largest regression and where it happened', async () => {
+    const r = await analyze(blobOf('faults.mcap'), contractOf('demo-contract.json'), { filename: 'faults.mcap' });
+    const f = r.checks[7].findings[0];
+    expect(f.status).toBe('fail');
+    expect(f.largest_regression_ns).toBe(100_000_000n);
+    expect([f.largest_regression.previous.log_time, f.largest_regression.current.log_time]).toEqual([800_000_000n, 700_000_000n]);
+    const clean = (await analyze(blobOf('clean.mcap'), contractOf('demo-contract.json'), { filename: 'clean.mcap' })).checks[7].findings[0];
+    expect(clean.largest_regression_ns).toBeUndefined();
   });
 });

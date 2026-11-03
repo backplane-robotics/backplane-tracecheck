@@ -6,6 +6,34 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-03
+
+### Added
+- **Summary index agreement (C01, full scan).** Many tools jump through an MCAP file's summary indexes instead of
+  reading every record. C01 now checks that each Chunk, Attachment and Metadata index entry points to a record of that
+  type and length (for chunks, also compression, sizes and time range), that an index covers every record of its type,
+  and that the Statistics record matches the counts and times actually read. A disagreement **warns** and lists each
+  wrong entry or statistic; the records themselves are read directly, so the other checks are unaffected. Prompted by
+  MCAP TypeScript 2.4.0, which fixed attachment and metadata index offsets that could be wrong while messages were
+  buffered. Files with no indexes and no Statistics get a *skipped* (no conclusion) finding.
+- `bad-index.mcap` synthetic example (intact records, wrong attachment and metadata index entries) and
+  `indexless-rosbag2.mcap` (no indexes, embedded `rosbag2` metadata; ROS 2's own reader has been reported to mis-read
+  such files, rosbag2 issue #2530).
+- CI also runs the Python tests with `mcap` 1.6.
+- **C08 largest backwards jump.** When record-order timestamps go backwards, the finding also reports
+  `largest_regression_ns` and the message pair where the largest jump happened, so small reordering jitter can be told
+  apart from a likely clock reset. Pass/fail is unchanged.
+- Web app: "Wrong summary index" demo recording.
+
+### Changed
+- **Fast mode** falls back to a full scan, with a `fast_mode_fallback` reason, when the summary's metadata index does
+  not point to a Metadata record. Previously the scan stopped and the file was reported as unreadable.
+- Web app: the result view shows the new C01 index facts and C08's largest backwards jump.
+
+### Fixed
+- Website: one small web font was embedded in the build as a `data:` URL, which the site's own security policy
+  (`font-src 'self'`) blocked. Fonts are now always served as files.
+
 ### Website
 - FCC Covered List robot tracker: added Vulcan (DA 26-1130), Haystack and T-Robotics (DA 26-1154) on 2026-10-28, and
   ARAPL, ATI Motors, Lightberry, SunScout, Swap Robotics and OMRON (DA 26-1181) on 2026-11-03. All 13 entries are checked

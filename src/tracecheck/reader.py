@@ -55,6 +55,12 @@ META_VALUE_LIMIT = 65536  # ROS 2 stores QoS YAML in channel metadata values
 META_PAIRS_LIMIT = 100
 FOOTER_RECORD_SIZE = 1 + 8 + 20
 SUPPORTED_COMPRESSION = ("", "zstd", "lz4")
+# Full scan: data-section Chunk/Attachment/Metadata records remembered for the summary index check.
+INDEX_TARGET_LIMIT = 1_000_000
+BAD_METADATA_INDEX = "summary metadata index does not point to a Metadata record (checked with a full scan instead)"
+INDEX_KINDS = (("chunk", "Chunk"), ("attachment", "Attachment"), ("metadata", "Metadata"))
+STAT_FIELDS = ("message_count", "schema_count", "channel_count", "attachment_count", "metadata_count", "chunk_count",
+               "message_start_time", "message_end_time")  # fmt: skip
 
 _U16 = struct.Struct("<H")
 _U32 = struct.Struct("<I")
@@ -253,7 +259,7 @@ class Track:
 
     __slots__ = (
         "cid", "cfg", "ev", "count", "first", "last", "lo", "hi", "monotonic",
-        "seq_bad", "seq_bad_n", "reg_bad", "reg_bad_n", "gap_bad", "gap_bad_n",
+        "seq_bad", "seq_bad_n", "reg_bad", "reg_bad_n", "gap_bad", "gap_bad_n", "reg_max", "reg_max_pair",
         "times", "ords", "loc_a", "loc_b", "files",
     )  # fmt: skip
 
@@ -268,6 +274,8 @@ class Track:
         self.reg_bad: list = []
         self.gap_bad: list = []
         self.seq_bad_n = self.reg_bad_n = self.gap_bad_n = 0
+        self.reg_max = 0  # largest backwards jump, in ns, and the first message pair where it occurred
+        self.reg_max_pair: tuple | None = None
         gap = cfg is not None and cfg.max_gap is not None
         self.times = array("Q") if gap else None
         self.ords = array("Q") if gap else None
@@ -295,6 +303,9 @@ class Track:
                 self.reg_bad_n += 1
                 if len(self.reg_bad) < self.ev:
                     self.reg_bad.append((prev, m))
+                if pt - t > self.reg_max:
+                    self.reg_max = pt - t
+                    self.reg_max_pair = (prev, m)
             elif self.monotonic and cfg.max_gap is not None and t - pt > cfg.max_gap:
                 self.gap_bad_n += 1
                 if len(self.gap_bad) < self.ev:
@@ -371,6 +382,62 @@ class ScanResult:
     # Full scan only. Recognised recorder event messages; None when the recording has none.
     recorder_events: dict | None = None
     events: list = field(default_factory=list)  # (log_time, ordinal, kind, action, topic)
+    # Full scan only. Agreement of the summary indexes and statistics with the records read (see check_index).
+    index: dict | None = None
+
+
+def check_index(targets: dict | None, entries: dict, statistics: dict | None, observed: dict) -> dict:
+    """Compare the summary section's indexes and Statistics with what a full scan read.
+
+    ``targets`` maps the file offset of each data-section Chunk, Attachment and Metadata record to
+    ``(kind, record_length, details)``, or is None when there were too many to remember. ``entries`` maps
+    each kind to its index entries ``(offset, length, details)`` in summary order. ``observed`` holds the
+    counts and times the scan saw. Issues are listed in a fixed order so both implementations agree.
+    """
+    issues: list[dict] = []
+    present = any(entries[k] for k, _ in INDEX_KINDS)
+    if targets is None:
+        return {"summary_index": "present" if present else "absent", "entries_checked": 0,
+                "statistics": "not checked", "issues": [], "limit_reached": True}  # fmt: skip
+    checked = 0
+    an = lambda w: f"an {w}" if w[0] in "AEIOU" else f"a {w}"  # noqa: E731
+    for kind, label in INDEX_KINDS:
+        actual = sum(1 for t in targets.values() if t[0] == kind)
+        for i, (offset, length, details) in enumerate(entries[kind]):
+            checked += 1
+            t = targets.get(offset)
+            row = {"index": kind, "entry": i, "offset": offset, "length": length}
+            if t is None:
+                problem = f"does not point to the start of {an(label)} record"
+            elif t[0] != kind:
+                problem = f"points to {an(dict(INDEX_KINDS)[t[0]])} record, not {an(label)} record"
+            elif t[1] != length:
+                problem = f"gives a length of {length} bytes; the {label} record there is {t[1]} bytes"
+            elif t[2] != details:
+                problem = f"describes the {label} record differently from the record itself"
+            else:
+                continue
+            issues.append(dict(row, problem=problem))
+        if entries[kind] and len(entries[kind]) != actual:
+            issues.append({"index": kind, "problem": f"indexes {len(entries[kind])} of the {actual} {label} records"})
+    stats_state = "absent"
+    if statistics is not None:
+        stats_state = "agrees"
+        has_messages = observed["message_count"] > 0
+        for k in STAT_FIELDS:
+            if k in ("message_start_time", "message_end_time") and not has_messages:
+                continue
+            if statistics[k] != observed[k]:
+                stats_state = "differs"
+                issues.append({"index": "statistics", "field": k, "claimed": statistics[k], "observed": observed[k]})
+        claimed, seen = statistics["channel_message_counts"], observed["channel_message_counts"]
+        for cid in sorted(set(claimed) | set(seen)):
+            if claimed.get(cid, 0) != seen.get(cid, 0):
+                stats_state = "differs"
+                issues.append({"index": "statistics", "field": "channel_message_counts", "channel_id": cid,
+                               "claimed": claimed.get(cid, 0), "observed": seen.get(cid, 0)})  # fmt: skip
+    return {"summary_index": "present" if present else "absent", "entries_checked": checked,
+            "statistics": stats_state, "issues": issues, "limit_reached": False}  # fmt: skip
 
 
 class _Registry:
@@ -556,6 +623,29 @@ def scan_full(
     summary_crc_start = None
     t_lo = t_hi = None
     event_kind: dict[int, str] = {}  # channel id -> recognised recorder event type
+    # Summary index check (check_index): where the data records are, and what the summary says about them.
+    targets: dict[int, tuple] = {}
+    entries: dict[str, list] = {"chunk": [], "attachment": [], "metadata": []}
+    n_entries = 0
+    overflow = False
+    statistics: dict | None = None
+    cid_counts: dict[int, int] = {}
+    metadata_records = 0
+
+    def remember(offset: int, kind: str, length: int, details: str) -> None:
+        nonlocal overflow
+        if len(targets) >= INDEX_TARGET_LIMIT:
+            overflow = True
+        elif not overflow:
+            targets[offset] = (kind, length, details)
+
+    def add_entry(kind: str, offset: int, length: int, details: str) -> None:
+        nonlocal overflow, n_entries
+        n_entries += 1
+        if n_entries > INDEX_TARGET_LIMIT:
+            overflow = True
+        elif not overflow:
+            entries[kind].append((offset, length, details))
 
     def on_event(kind: str, buf, body: int, end: int, log_t: int) -> None:
         info = r.recorder_events
@@ -587,6 +677,7 @@ def scan_full(
         stats["messages"] += 1
         if stats["messages"] > limits.max_messages:
             raise ScanError(f"message count exceeds {limits.max_messages}")
+        cid_counts[cid] = cid_counts.get(cid, 0) + 1
         if t_lo is None or log_t < t_lo:
             t_lo = log_t
         if t_hi is None or log_t > t_hi:
@@ -666,10 +757,35 @@ def scan_full(
                 if src.pos != size:
                     raise ScanError("trailing bytes after footer magic")
                 break
+            if ended and op in (OP_CHUNK_INDEX, OP_ATTACHMENT_INDEX, OP_METADATA_INDEX, OP_STATISTICS):
+                if length > limits.max_record_bytes:
+                    raise ScanError(f"record length exceeds {limits.max_record_bytes} byte limit")
+                c = _Cursor(src.read(length))
+                if op == OP_CHUNK_INDEX:
+                    t0, t1, at, ln = c.u64(), c.u64(), c.u64(), c.u64()
+                    c.take(c.u32())  # message index offsets
+                    c.u64()  # message index length
+                    comp = c.string()
+                    add_entry("chunk", at, ln, f"{comp}|{c.u64()}|{c.u64()}|{t0}|{t1}")
+                elif op == OP_ATTACHMENT_INDEX:
+                    add_entry("attachment", c.u64(), c.u64(), "")
+                elif op == OP_METADATA_INDEX:
+                    at, ln = c.u64(), c.u64()
+                    add_entry("metadata", at, ln, c.string())
+                else:
+                    statistics = {
+                        "message_count": c.u64(), "schema_count": c.u16(), "channel_count": c.u32(),
+                        "attachment_count": c.u32(), "metadata_count": c.u32(), "chunk_count": c.u32(),
+                        "message_start_time": c.u64(), "message_end_time": c.u64(),
+                        "channel_message_counts": c.u16_u64_map(),
+                    }  # fmt: skip
+                continue
             if op not in (OP_HEADER, OP_SCHEMA, OP_CHANNEL, OP_MESSAGE, OP_CHUNK, OP_METADATA, OP_DATA_END):
                 src.skip(length)
                 if op == OP_ATTACHMENT:
                     stats["attachments_skipped"] += 1
+                    if not ended:
+                        remember(offset, "attachment", 9 + length, "")
                 elif op not in KNOWN_OPCODES:
                     r.unknown += 1
                 continue
@@ -692,6 +808,8 @@ def scan_full(
             elif op == OP_METADATA:
                 if not ended:
                     reg.metadata(c, loc)
+                    metadata_records += 1
+                    remember(offset, "metadata", 9 + length, r.metadata[-1]["name"])
             elif op == OP_DATA_END:
                 if ended:
                     raise ScanError("repeated DataEnd")
@@ -707,13 +825,14 @@ def scan_full(
                 if ended:
                     raise ScanError("chunk after DataEnd")
                 stats["chunks"] += 1
-                c.u64()  # message_start_time
-                c.u64()  # message_end_time
+                t0 = c.u64()  # message_start_time
+                t1 = c.u64()  # message_end_time
                 usize = c.u64()
                 ucrc = c.u32()
                 compression = c.string()
                 n = c.u64()
                 p = c.take(n)
+                remember(offset, "chunk", 9 + length, f"{compression}|{n}|{usize}|{t0}|{t1}")
                 if compression not in SUPPORTED_COMPRESSION:
                     raise ScanError(f"unsupported compression: {compression[:40]!r}")
                 if compression == "":
@@ -749,6 +868,13 @@ def scan_full(
         r.sha256 = src.sha.hexdigest()
         r.stats["seconds"] = round(time.monotonic() - started, 3)
         r.log_time_range = None if t_lo is None else (t_lo, t_hi)
+        observed = {
+            "message_count": stats["messages"], "schema_count": len(r.schemas), "channel_count": len(r.channels),
+            "attachment_count": stats["attachments_skipped"], "metadata_count": metadata_records,
+            "chunk_count": stats["chunks"], "message_start_time": t_lo or 0, "message_end_time": t_hi or 0,
+            "channel_message_counts": cid_counts,
+        }  # fmt: skip
+        r.index = check_index(None if overflow else targets, entries, statistics, observed)
         if ctx is not None:
             ctx.base += stats["messages"]
             ctx.tracked = tracked
@@ -866,11 +992,15 @@ def scan_fast(f: BinaryIO, size: int, limits: Limits | None = None) -> ScanResul
         return r
 
     for offset, length in metadata_index:
-        if not 9 <= length <= limits.max_record_bytes:
-            raise ScanError("metadata index length invalid or above limit")
+        # A wrong index is a property of the file worth reporting, not a reason to stop: fall back to a full scan,
+        # which reads every record and reports the index disagreement in C01.
+        if not 9 <= length <= limits.max_record_bytes or offset < header_end or offset + length > summary_start:
+            r.fast_fallback = BAD_METADATA_INDEX
+            return r
         rec = read_at(offset, length)
         if rec[0] != OP_METADATA or _U64.unpack_from(rec, 1)[0] != length - 9:
-            raise ScanError("metadata index does not point to a Metadata record")
+            r.fast_fallback = BAD_METADATA_INDEX
+            return r
         reg.metadata(_Cursor(rec, 9), {"file_offset": offset})
 
     r.counts = {cid: statistics["channel_message_counts"].get(cid, 0) for cid in r.channels}

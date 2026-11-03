@@ -12,10 +12,11 @@ from tracecheck.samples import generate
 
 ROOT = Path(__file__).resolve().parents[1]
 DEMO = ["clean", "clean-zstd", "clean-lz4", "faults", "unchunked", "no-crc", "unsupported-codec", "malformed",
-        "truncated"]  # fmt: skip
+        "truncated", "bad-index", "indexless-rosbag2"]  # fmt: skip
 CASES = [(f"{n}.mcap", "demo-contract.json", False) for n in DEMO] + [
     ("clean-zstd.mcap", "demo-contract.json", True),
     ("faults.mcap", "demo-contract.json", True),
+    ("bad-index.mcap", "demo-contract.json", True),
     ("fleet-zstd.mcap", "fleet-contract.json", False),
     ("fleet-zstd.mcap", "fleet-contract.json", True),
     ("fleet-dropout-lz4.mcap", "fleet-contract.json", False),

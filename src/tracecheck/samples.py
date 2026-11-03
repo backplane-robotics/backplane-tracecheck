@@ -2,9 +2,10 @@
 
 import json
 import struct
+import zlib
 from pathlib import Path
 
-from mcap.writer import CompressionType, Writer
+from mcap.writer import CompressionType, IndexType, Writer
 
 DYNREC = 'rosbag2_dynamic_recorder_interfaces/msg/'
 
@@ -47,6 +48,66 @@ def write_sample(path, fault=False, chunked=True, compression=CompressionType.NO
         for i,t in enumerate(ts):
             sequence = seq[i] if seq is not None else (i+2 if fault and i>=3 else i)
             w.add_message(cid, t, b'{"x":1,"synthetic":true}', t, sequence=sequence)
+        w.finish()
+
+
+def write_bad_index_sample(path):
+    """A valid recording whose summary indexes point to the wrong places, as a buggy writer could produce.
+
+    Every record is intact; only the summary is wrong: the Metadata index entry points 20 bytes past the start of
+    its record, and the Attachment index entry points at the Metadata record. The summary CRC is recomputed, so
+    the file is otherwise well formed. Readers that trust the index would show wrong metadata and attachments.
+    """
+    with Path(path).open('wb') as f:
+        w = Writer(f, compression=CompressionType.NONE, enable_crcs=True, enable_data_crcs=True)
+        w.start(profile='', library='backplane-tracecheck synthetic generator')
+        sid = w.register_schema('DemoPosition', 'jsonschema', b'{"type":"object"}')
+        cid = w.register_channel('/demo/position', 'json', sid)
+        w.add_metadata('session', {'software_version': 'demo-1'})
+        for i in range(11):
+            t = i * 100000000
+            w.add_message(cid, t, b'{"x":1,"synthetic":true}', t, sequence=i)
+        w.add_attachment(create_time=0, log_time=500000000, name='calibration.yaml', media_type='application/yaml',
+                         data=b'synthetic: true\n')
+        w.finish()
+    data = bytearray(Path(path).read_bytes())
+    footer_at = len(data) - 8 - 29
+    summary_start = struct.unpack_from('<Q', data, footer_at + 9)[0]
+    meta_at = None
+    pos = summary_start
+    while pos < footer_at:
+        op, length = data[pos], struct.unpack_from('<Q', data, pos + 1)[0]
+        if op == 0x0D:  # MetadataIndex: remember the true offset, then point 20 bytes past it
+            meta_at = struct.unpack_from('<Q', data, pos + 9)[0]
+            struct.pack_into('<Q', data, pos + 9, meta_at + 20)
+        pos += 9 + length
+    pos = summary_start
+    while pos < footer_at:
+        op, length = data[pos], struct.unpack_from('<Q', data, pos + 1)[0]
+        if op == 0x0A:  # AttachmentIndex: point at the Metadata record instead
+            struct.pack_into('<Q', data, pos + 9, meta_at)
+        pos += 9 + length
+    struct.pack_into('<I', data, footer_at + 25, zlib.crc32(bytes(data[summary_start:footer_at + 25])))
+    Path(path).write_bytes(bytes(data))
+
+
+def write_indexless_rosbag2_sample(path):
+    """No chunk, message, attachment or metadata indexes, with an embedded ``rosbag2`` Metadata record.
+
+    ROS 2's own MCAP reader has been reported to mis-read message 2 of such files (rosbag2 issue #2530); a full
+    scan reads the records directly and is not affected.
+    """
+    with Path(path).open('wb') as f:
+        w = Writer(f, compression=CompressionType.ZSTD, index_types=IndexType.NONE, enable_crcs=True)
+        w.start(profile='', library='backplane-tracecheck synthetic generator')
+        sid = w.register_schema('DemoPosition', 'jsonschema', b'{"type":"object"}')
+        cid = w.register_channel('/demo/position', 'json', sid)
+        w.add_metadata('session', {'software_version': 'demo-1'})
+        w.add_metadata('rosbag2', {'serialized_metadata': 'rosbag2_bagfile_information:\n  version: 9\n'
+                                   '  storage_identifier: mcap\n  message_count: 11\n'})
+        for i in range(11):
+            t = i * 100000000
+            w.add_message(cid, t, b'{"x":1,"synthetic":true}', t, sequence=i)
         w.finish()
 
 
@@ -201,6 +262,10 @@ def generate(dest):
     p.write_bytes(p.read_bytes().replace(b'zstd', b'brot'))
     (dest/'malformed.mcap').write_bytes(b'not an MCAP recording\x00')
     (dest/'truncated.mcap').write_bytes((dest/'clean.mcap').read_bytes()[:-12])
+    # Intact records, wrong summary indexes (a writer bug of the kind fixed in MCAP TypeScript 2.4.0).
+    write_bad_index_sample(dest/'bad-index.mcap')
+    # No indexes at all, with embedded rosbag2 metadata: must read cleanly.
+    write_indexless_rosbag2_sample(dest/'indexless-rosbag2.mcap')
     write_fleet_sample(dest/'fleet-zstd.mcap', seconds=20)
     # Cut part-way through the message data, like a recorder that stopped mid-write: no summary, no footer.
     fleet = (dest/'fleet-zstd.mcap').read_bytes()
