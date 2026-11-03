@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Website
+- FCC Covered List robot tracker: added Vulcan (DA 26-1130), Haystack and T-Robotics (DA 26-1154) on 2026-10-28, and
+  ARAPL, ATI Motors, Lightberry, SunScout, Swap Robotics and OMRON (DA 26-1181) on 2026-11-03. All 13 entries are checked
+  against Appendix B of DA 26-1181, the FCC's full list of robotic-device conditional approvals.
+- Tracker page: a note explaining that waivers (for example DA 26-1146 for Intel) are not Covered List exemptions and are
+  not listed.
+
 ## [0.3.0] - 2026-10-20
 
 ### Added
