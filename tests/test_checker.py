@@ -270,7 +270,8 @@ class HTTPTests(unittest.TestCase):
         result=[]
         with patch('tracecheck.server.subprocess.Popen',side_effect=slow):
             t=threading.Thread(target=lambda: result.append(self.request('/run',self.sample_request())));t.start()
-            for _ in range(100):
+            # Wait up to 10 s for the worker to start: GitHub's Windows runners can be slow to start a Python process.
+            for _ in range(500):
                 if self.server.proc: break
                 time.sleep(.02)
             self.assertIsNotNone(self.server.proc)
