@@ -1,0 +1,46 @@
+<!doctype html>
+<!-- Source for public/og-image.png, the 1200x630 link-preview image shared by every page.
+     Regenerate (from web/): msedge --headless --disable-gpu --hide-scrollbars --window-size=1200,630
+       --screenshot=public/og-image.png scripts/og-image.html
+     Not part of the site build. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<style>
+  @font-face { font-family: 'SG'; src: url('../node_modules/@fontsource-variable/space-grotesk/files/space-grotesk-latin-wght-normal.woff2') format('woff2'); font-weight: 300 700; }
+  @font-face { font-family: 'Inter'; src: url('../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2'); font-weight: 100 900; }
+  @font-face { font-family: 'JBM'; src: url('../node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2') format('woff2'); font-weight: 100 800; }
+  html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    background:
+      radial-gradient(700px 420px at 92% 8%, rgba(56, 189, 248, 0.20), transparent 70%),
+      radial-gradient(640px 420px at 0% 100%, rgba(42, 245, 210, 0.14), transparent 70%),
+      #05080d;
+    color: #e7eef6; font-family: 'Inter', sans-serif; position: relative;
+  }
+  .grid {
+    position: absolute; inset: 0;
+    background-image: linear-gradient(rgba(130, 200, 225, 0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(130, 200, 225, 0.06) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+  .wrap { position: absolute; inset: 72px 80px; display: flex; flex-direction: column; }
+  .brand { display: flex; align-items: center; gap: 22px; }
+  .brand img { width: 84px; height: 84px; }
+  .brand span { font-family: 'SG'; font-weight: 650; font-size: 44px; letter-spacing: -0.5px; }
+  h1 { font-family: 'SG'; font-weight: 650; font-size: 70px; line-height: 1.06; letter-spacing: -1.5px; margin: 64px 0 0; max-width: 980px; }
+  .grad { background: linear-gradient(120deg, #2af5d2, #38bdf8 55%, #7aa7ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .tags { margin-top: auto; display: flex; gap: 16px; font-family: 'JBM'; font-size: 24px; color: #93a6b9; }
+  .tags span { border: 1px solid rgba(130, 220, 235, 0.28); border-radius: 999px; padding: 10px 22px; background: rgba(13, 21, 31, 0.72); }
+  .url { position: absolute; right: 0; bottom: 12px; font-family: 'JBM'; font-size: 24px; color: #2af5d2; }
+</style>
+</head>
+<body>
+  <div class="grid"></div>
+  <div class="wrap">
+    <div class="brand"><img src="../public/favicon.svg" alt="" /><span>Backplane Robotics</span></div>
+    <h1>Practical tools for <span class="grad">robotics teams</span></h1>
+    <div class="tags"><span>Tracecheck</span><span>FCC Covered List tracker</span></div>
+    <div class="url">backplanerobotics.com</div>
+  </div>
+</body>
+</html>

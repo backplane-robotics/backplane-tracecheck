@@ -1,4 +1,19 @@
+# Search engines and AI search/answer tools (for example Googlebot, Bingbot, OAI-SearchBot, ChatGPT-User,
+# Claude-SearchBot, Claude-User, PerplexityBot) may crawl everything, so the site can be found and cited.
 User-agent: *
 Allow: /
+
+# Crawlers that collect content for training AI models are not allowed. Blocking these does not affect
+# search results: Google-Extended and Applebot-Extended only control AI training use, not Google or Apple search.
+User-agent: GPTBot
+User-agent: ClaudeBot
+User-agent: anthropic-ai
+User-agent: Google-Extended
+User-agent: Applebot-Extended
+User-agent: CCBot
+User-agent: Bytespider
+User-agent: meta-externalagent
+User-agent: cohere-training-data-crawler
+Disallow: /
 
 Sitemap: https://backplanerobotics.com/sitemap.xml

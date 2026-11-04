@@ -11,6 +11,13 @@ All notable changes to this project are documented here. The format follows
   `/insights/fcc-test-lab-rules/`, linked from the Covered List tracker.
 - `sitemap.xml` lists the article and has last-modified dates; a site test checks every page's title, description,
   canonical URL and sitemap entry.
+- The Covered List tracker's entries, count and "last updated" date are written into the page HTML at build time
+  (`web/src/tracker-static.js`), so crawlers that do not run JavaScript see the full list instead of "Loading…". The
+  browser still loads the live data and replaces it with identical, filterable markup. Invalid data fails the build.
+- `robots.txt` keeps search engines and AI search/answer crawlers allowed and now disallows AI training crawlers
+  (GPTBot, ClaudeBot, Google-Extended, Applebot-Extended, CCBot and others). A site test checks both.
+- Link-preview image (`/og-image.png`, 1200×630, source in `web/scripts/og-image.html`) on every page, with
+  `summary_large_image` cards.
 
 ## [0.4.0] - 2026-11-03
 

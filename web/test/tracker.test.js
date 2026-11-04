@@ -64,3 +64,14 @@ describe('filterEntries', () => {
     expect(filterEntries(data.entries, {})).toHaveLength(data.entries.length);
   });
 });
+
+describe('build-time tracker HTML', async () => {
+  const { escapeHtml, renderEntryHtml } = await import('../src/tracker-static.js');
+  it('escapes markup in data', () => {
+    expect(escapeHtml('<b a="1">&\'')).toBe('&lt;b a=&quot;1&quot;&gt;&amp;&#39;');
+    const { data } = validateTrackerData(DATA);
+    const html = renderEntryHtml({ ...data.entries[0], manufacturer: '<script>x</script>' });
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;script&gt;x&lt;/script&gt;');
+  });
+});

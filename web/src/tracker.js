@@ -84,7 +84,12 @@ function setUpdated(iso) {
 }
 
 function showError(message) {
-  $('result-count').textContent = 'Unavailable';
+  // The build writes the list into the page (tracker-static.js). If it is there, keep it and say why filtering is off.
+  if ($('tracker-list').querySelector('article')) {
+    message = 'The latest tracker data could not be loaded, so the list below is as of the last site update and the filters do not work. Please refresh the page, or check the official FCC Covered List directly.';
+  } else {
+    $('result-count').textContent = 'Unavailable';
+  }
   const box = $('tracker-error');
   box.textContent = message;
   box.hidden = false;
