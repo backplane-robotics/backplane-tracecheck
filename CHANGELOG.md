@@ -19,7 +19,8 @@ All notable changes to this project are documented here. The format follows
 - Link-preview image (`/og-image.png`, 1200×630, source in `web/scripts/og-image.html`) on every page, with
   `summary_large_image` cards.
 - Google Search Console ownership proofs: a `google-site-verification` meta tag on the home page and
-  `/google3b619a281a7416fa.html`. A site test keeps both in place.
+  `/google3b619a281a7416fa.html`. A site test keeps both in place. The Worker serves the verification file at its exact
+  `.html` address, because the clean-URL setting would otherwise redirect it and Google rejects redirects.
 - Updated the `wrangler` dev tool to 4.157.0, which brings in `undici` 7.30.1 and clears the npm audit and Dependabot
   alerts (deploy/local-simulator tooling only; nothing from it ships in the website).
 

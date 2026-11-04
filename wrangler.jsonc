@@ -1,8 +1,8 @@
 {
 	// Cloudflare Workers deployment for backplanerobotics.com.
 	// Build: cd web && npm ci && npm run build   Deploy (from the repository root): npx wrangler deploy
-	// Static pages are served directly from assets. Only /api/* runs the Worker script (web/worker/index.js),
-	// which hosts the optional feedback endpoint. Recording processing stays in the browser and never uses it.
+	// Static pages are served directly from assets. Only /api/* (and the Google verification file) runs the Worker
+	// script (web/worker/index.js), which hosts the optional feedback endpoint. Recording processing stays in the browser and never uses it.
 	// Security headers for static assets come from web/public/_headers; the Worker sets its own response headers.
 	// Feedback storage setup and private access: see docs/FEEDBACK.md.
 	"$schema": "./web/node_modules/wrangler/config-schema.json",
@@ -15,7 +15,9 @@
 		"html_handling": "auto-trailing-slash",
 		"not_found_handling": "none",
 		"run_worker_first": [
-			"/api/*"
+			"/api/*",
+			// Google Search Console verification file: served without the clean-URL redirect (see web/worker/index.js).
+			"/google3b619a281a7416fa.html"
 		]
 	},
 	// Private feedback store (Workers KV namespace "FEEDBACK", created 2026-10-18). See docs/FEEDBACK.md.

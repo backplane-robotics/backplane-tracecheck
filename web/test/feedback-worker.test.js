@@ -145,4 +145,11 @@ describe('Worker routing', () => {
     const env = { FEEDBACK: fakeKv(), ASSETS: { fetch: async () => new Response('asset') } };
     expect((await worker.fetch(new Request('https://backplanerobotics.com/api/feedback/list'), env)).status).toBe(404);
   });
+  it('serves the Google verification file at its exact .html address (no clean-URL redirect)', async () => {
+    const seen = [];
+    const env = { FEEDBACK: fakeKv(), ASSETS: { fetch: async (r) => (seen.push(new URL(r.url).pathname), new Response('asset')) } };
+    await worker.fetch(new Request('https://backplanerobotics.com/google3b619a281a7416fa.html'), env);
+    await worker.fetch(new Request('https://backplanerobotics.com/other.html'), env);
+    expect(seen).toEqual(['/google3b619a281a7416fa', '/other.html']);
+  });
 });
