@@ -89,8 +89,9 @@ describe('search engine basics', () => {
   });
 });
 
-// Guard rails for the whole origin. Tracecheck Pro is planned under this domain, and browsers give every page on one
-// origin the same storage, so the public site must stay free of injectable HTML, inline scripts and service workers.
+// Guard rails for the whole origin (every page on backplanerobotics.com, including the planned /pro/ sales page, shares
+// one browser origin), so the public site must stay free of injectable HTML, inline scripts and service workers.
+// The Pro app itself runs on its own origin, app.backplanerobotics.com.
 describe('site-wide security guard rails', () => {
   const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((d) =>
     d.isDirectory() ? walk(resolve(dir, d.name)) : [resolve(dir, d.name)]);

@@ -21,7 +21,7 @@ All notable changes to this project are documented here. The format follows
   publishing; Dependabot opens weekly update pull requests (Actions, npm, pip).
 - Ruff rules live in `pyproject.toml` (same locally and in CI, tests included); ruff pinned in the `dev` extra.
 - Site guard-rail tests: no HTML-injection sinks, `eval` or service workers in site code; no inline or third-party
-  scripts; strict CSP. (Tracecheck Pro is planned on the same domain, which shares browser storage.)
+  scripts; strict CSP. These cover every page on the domain, including the planned `/pro/` sales page.
 
 ### Website
 - New article: plain-language summary of the FCC test-lab location rules (FCC 26-73) for robotics makers, at
@@ -42,7 +42,7 @@ All notable changes to this project are documented here. The format follows
   alerts (deploy/local-simulator tooling only; nothing from it ships in the website).
 - Tracecheck page: a note by the download buttons that reports include the file name, topic names, metadata and the
   contract. Two hidden file inputs no longer appear as unlabelled keyboard stops.
-- FCC test-lab article: the Sources section links the order (PDF on fcc.gov) and the OET test lab and TCB searches.
+- FCC test-lab article: the Sources section links the order (PDF on fcc.gov).
 - `/.well-known/security.txt` (security contact). Landing page footer headings use the correct level.
 
 ## [0.4.0] - 2026-11-03
