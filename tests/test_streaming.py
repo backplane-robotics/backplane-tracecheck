@@ -1,10 +1,12 @@
 """Tests for 0.2 features: compression safety, streaming, fast mode, CRC policy, gap tracking."""
 
 import copy
+import itertools
 import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from mcap.writer import CompressionType, Writer
 
@@ -215,7 +217,11 @@ class StreamingTests(Base):
     def test_timeout_limit(self):
         p = self.root / "fleet.mcap"
         write_fleet_sample(p, seconds=10)
-        r = analyze_file(p, FLEET_CONTRACT, limits=Limits(max_seconds=0))
+        # A fake clock that moves 1 s per reading makes this deterministic. With the real clock, a fast scan could
+        # finish inside one tick of Windows' coarse timer (about 16 ms), measure 0 s and never exceed max_seconds=0.
+        ticks = itertools.count(0.0, 1.0)
+        with patch("tracecheck.reader.time.monotonic", side_effect=lambda: next(ticks)):
+            r = analyze_file(p, FLEET_CONTRACT, limits=Limits(max_seconds=0.5))
         self.assertFalse(r["scan_complete"])
         self.assertIn("scan time exceeds", r["checks"][0]["findings"][0]["detail"])
 
