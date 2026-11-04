@@ -17,7 +17,7 @@
   "devDependencies": {
     "vite": "^8.3.0",
     "vitest": "^5.0.4",
-    "wrangler": "^4.151.1"
+    "wrangler": "^4.157.0"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",

@@ -30,6 +30,11 @@ describe('search engine basics', () => {
     });
   }
 
+  it('keeps the Google Search Console ownership proofs (removing them unverifies the site)', () => {
+    expect(read('index.html')).toContain('<meta name="google-site-verification" content="FPAdFw_kW0GiPCVfHkRc-yQi7ILc8GIEX0YSbypjGqs" />');
+    expect(read('public/google3b619a281a7416fa.html')).toContain('google-site-verification: google3b619a281a7416fa.html');
+  });
+
   it('sitemap.xml lists exactly the public pages', () => {
     expect(inSitemap.sort()).toEqual(Object.values(PAGES).map((p) => SITE + p).sort());
   });
