@@ -29,7 +29,8 @@ def _parser() -> argparse.ArgumentParser:
         "Exit 0 pass, 1 findings/warnings, 2 input/config/operational error.",
     )
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    sub = p.add_subparsers(dest="command", required=True)
+    # metavar lists only the public commands, so the internal `_worker` stays out of --help.
+    sub = p.add_subparsers(dest="command", required=True, metavar="{check,validate-contract,manifest,verify,serve,samples}")
 
     check = sub.add_parser("check", help="check a recording (an .mcap file or a ROS 2 bag folder) and write JSON + "
                                           "HTML reports")  # fmt: skip
@@ -73,6 +74,7 @@ def _parser() -> argparse.ArgumentParser:
     sm = sub.add_parser("samples", help="write synthetic example recordings and the demo contract")
     sm.add_argument("--dest", type=Path, default=Path("examples"))
 
+    # No help text: argparse then leaves it out of the command list (help=SUPPRESS would print "==SUPPRESS==").
     w = sub.add_parser("_worker")  # internal: used by the local server
     w.add_argument("recording", type=Path)
     w.add_argument("contract", type=Path)

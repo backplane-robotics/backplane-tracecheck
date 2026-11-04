@@ -130,6 +130,8 @@ select {
 .count.warn b { color: var(--warn); }
 .count.fail b { color: var(--fail); }
 .result-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.export-note { font-size: 0.8rem; margin: 10px 0 0; text-align: right; }
+@media (max-width: 720px) { .export-note { text-align: left; } }
 .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 16px 0; }
 .stat { padding: 16px 18px; display: grid; gap: 4px; align-content: start; }
 .stat > span { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; }

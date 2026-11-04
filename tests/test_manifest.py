@@ -92,6 +92,7 @@ class ManifestTests(unittest.TestCase):
             json.dumps(dict(good, files=[dict(good["files"][0], name="../x.mcap")])),
             json.dumps(dict(good, files=good["files"] * 2)),
             json.dumps(dict(good, topics=[{"topic": "/a", "message_count": -1}])),
+            "[" * 200_000,  # nested too deeply for the JSON parser: an error, not a crash
         ]
         for i, text in enumerate(bad_cases):
             p = self.root / f"bad{i}.json"

@@ -118,7 +118,7 @@ class Handler(BaseHTTPRequestHandler):
                     if self.server.cancelled:
                         raise ValueError('Cancelled')
                     proc = subprocess.Popen([sys.executable, '-m', 'tracecheck', '_worker', str(folder/'input.mcap'),
-                                             str(folder/'contract.json'), '--name', name], stdout=subprocess.PIPE,
+                                             str(folder/'contract.json'), f'--name={name}'], stdout=subprocess.PIPE,
                                              stderr=subprocess.PIPE, text=True, encoding='utf-8')
                     self.server.proc = proc
                 try:

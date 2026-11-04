@@ -67,7 +67,7 @@
             </div>
           </label>
           <div class="bag-pick" id="bag-pick">
-            <input type="file" id="folder-input" webkitdirectory multiple class="sr-only" />
+            <input type="file" id="folder-input" webkitdirectory multiple class="sr-only" tabindex="-1" aria-hidden="true" />
             <span class="muted">Recording split into several files? Check one ROS 2 bag folder as one recording.</span>
             <button class="btn btn-sm" id="folder-btn" type="button">Choose a bag folder</button>
           </div>
@@ -95,7 +95,7 @@
           <div class="contract-bar">
             <span class="contract-status" id="contract-status" role="status">Loading…</span>
             <div class="contract-actions">
-              <input type="file" id="contract-file" accept=".json,application/json" class="sr-only" />
+              <input type="file" id="contract-file" accept=".json,application/json" class="sr-only" tabindex="-1" aria-hidden="true" />
               <button class="btn btn-sm" id="contract-load" type="button">Load file</button>
               <button class="btn btn-sm" id="contract-download" type="button">Download</button>
             </div>
@@ -156,6 +156,9 @@
             <button class="btn btn-sm btn-quiet" id="fb-open-results" type="button" data-feedback-open>Send feedback</button>
           </div>
         </div>
+        <p class="tiny muted export-note" id="export-note">
+          Downloaded reports include the file name, topic names, metadata and the contract you used. Check them before sharing.
+        </p>
 
         <div class="stats" id="result-stats"></div>
         <p class="interpretation muted" id="result-interpretation"></p>

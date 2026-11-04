@@ -1,6 +1,6 @@
 // Site-wide checks for search engines and link previews: every page has a title, a description and a canonical URL,
 // every canonical URL is in sitemap.xml (and nothing else is), and robots.txt points to the sitemap.
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { prerenderTrackerPage } from '../src/tracker-static.js';
@@ -75,4 +75,50 @@ describe('search engine basics', () => {
     expect(data['@type']).toBe('Article');
     expect(data.mainEntityOfPage).toBe(`${SITE}/insights/fcc-test-lab-rules/`);
   });
+
+  it('publishes security.txt with a contact and a future expiry date', () => {
+    const txt = read('public/.well-known/security.txt');
+    expect(txt).toMatch(/^Contact: mailto:hello@backplanerobotics\.com$/m);
+    const expires = Date.parse(/^Expires: (.+)$/m.exec(txt)[1]);
+    expect(expires).toBeGreaterThan(Date.now());
+  });
+
+  it('warns at export that reports contain file names, topics, metadata and the contract (Directions §4)', () => {
+    const html = read('tracecheck/index.html');
+    expect(html).toMatch(/id="export-note"[^>]*>\s*Downloaded reports include the file name, topic names, metadata and the contract/);
+  });
+});
+
+// Guard rails for the whole origin. Tracecheck Pro is planned under this domain, and browsers give every page on one
+// origin the same storage, so the public site must stay free of injectable HTML, inline scripts and service workers.
+describe('site-wide security guard rails', () => {
+  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((d) =>
+    d.isDirectory() ? walk(resolve(dir, d.name)) : [resolve(dir, d.name)]);
+  const sources = [...walk(resolve(WEB, 'src')), ...walk(resolve(WEB, 'worker'))].filter((f) => f.endsWith('.js'));
+
+  it('no HTML-injection sinks, eval or service workers in site code', () => {
+    const banned = /\.(innerHTML|outerHTML)\s*[+]?=|insertAdjacentHTML\s*\(|document\.write\s*\(|\beval\s*\(|new\s+Function\s*\(|serviceWorker\s*\.\s*register/;
+    const hits = sources.filter((f) => banned.test(readFileSync(f, 'utf8')));
+    expect(hits).toEqual([]);
+  });
+
+  it('the CSP allows no inline or eval script, and scripts and connections only from this site', () => {
+    const csp = /Content-Security-Policy: (.+)/.exec(read('public/_headers'))[1];
+    expect(csp).not.toMatch(/unsafe-inline|unsafe-eval|unsafe-hashes|strict-dynamic|\*/);
+    expect(csp).toMatch(/script-src 'self';/);
+    expect(csp).toMatch(/connect-src 'self';/);
+    expect(csp).toMatch(/frame-ancestors 'none'/);
+  });
+
+  for (const file of Object.keys(PAGES)) {
+    it(`${file} has no inline scripts, event-handler attributes or third-party scripts`, () => {
+      const html = read(file);
+      for (const [, attrs] of html.matchAll(/<script\b([^>]*)>/g)) {
+        const isData = /type="application\/ld\+json"/.test(attrs);
+        const isLocalModule = /src="\/src\/[^"]+"/.test(attrs);
+        expect(isData || isLocalModule, `<script${attrs}>`).toBe(true);
+      }
+      expect(html).not.toMatch(/\son[a-z]+\s*=/i);
+    });
+  }
 });

@@ -68,7 +68,13 @@ export async function handleFeedback(request, env, { now = () => new Date(), mak
 
   if (env.FEEDBACK_LIMITER) {
     const key = request.headers.get('cf-connecting-ip') || 'unknown';
-    const { success } = await env.FEEDBACK_LIMITER.limit({ key });
+    let success;
+    try {
+      ({ success } = await env.FEEDBACK_LIMITER.limit({ key }));
+    } catch {
+      // Fail closed with a JSON answer rather than an uncaught exception (which would also create a log entry).
+      return reply(503, { ok: false, error: 'rate_limiter_unavailable' });
+    }
     if (!success) return reply(429, { ok: false, error: 'rate_limited' }, { 'retry-after': '60' });
   }
 

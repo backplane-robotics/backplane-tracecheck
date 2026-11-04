@@ -124,6 +124,15 @@ describe('POST /api/feedback', () => {
     expect(kv.puts).toHaveLength(0);
   });
 
+  it('answers 503 JSON (and stores nothing) if the rate limiter fails', async () => {
+    const kv = fakeKv();
+    const broken = { async limit() { throw new Error('binding unavailable'); } };
+    const res = await handleFeedback(req(good), { FEEDBACK: kv, FEEDBACK_LIMITER: broken }, fixed);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ ok: false, error: 'rate_limiter_unavailable' });
+    expect(kv.puts).toHaveLength(0);
+  });
+
   it('only allows POST', async () => {
     const res = await handleFeedback(req(null, { method: 'GET' }), { FEEDBACK: fakeKv() }, fixed);
     expect(res.status).toBe(405);

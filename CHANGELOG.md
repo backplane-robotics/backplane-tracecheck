@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- `tracecheck serve`: a recording whose file name starts with `-` (for example `-x.mcap`) could not be checked; the
+  name is now passed as a single `--name=` argument.
+- `tracecheck verify`: a deeply nested (malformed) manifest now gives a clear error and exit code 2 instead of a
+  traceback and exit code 1.
+- `tracecheck --help` no longer lists the internal `_worker` command.
+
+### Security and maintenance
+- Feedback Worker: answers `503` JSON if the rate limiter fails instead of throwing; Workers observability is turned
+  off entirely so no request or exception logs are collected. `docs/FEEDBACK.md` updated (spam control is best-effort).
+- `.gitignore` covers `.env`, `.dev.vars`, key files and editor workspace files.
+- GitHub Actions pinned to exact commits; the PyPI release workflow now runs the full CI suite before building and
+  publishing; Dependabot opens weekly update pull requests (Actions, npm, pip).
+- Ruff rules live in `pyproject.toml` (same locally and in CI, tests included); ruff pinned in the `dev` extra.
+- Site guard-rail tests: no HTML-injection sinks, `eval` or service workers in site code; no inline or third-party
+  scripts; strict CSP. (Tracecheck Pro is planned on the same domain, which shares browser storage.)
+
 ### Website
 - New article: plain-language summary of the FCC test-lab location rules (FCC 26-73) for robotics makers, at
   `/insights/fcc-test-lab-rules/`, linked from the Covered List tracker.
@@ -23,6 +40,10 @@ All notable changes to this project are documented here. The format follows
   `.html` address, because the clean-URL setting would otherwise redirect it and Google rejects redirects.
 - Updated the `wrangler` dev tool to 4.157.0, which brings in `undici` 7.30.1 and clears the npm audit and Dependabot
   alerts (deploy/local-simulator tooling only; nothing from it ships in the website).
+- Tracecheck page: a note by the download buttons that reports include the file name, topic names, metadata and the
+  contract. Two hidden file inputs no longer appear as unlabelled keyboard stops.
+- FCC test-lab article: the Sources section links the order (PDF on fcc.gov) and the OET test lab and TCB searches.
+- `/.well-known/security.txt` (security contact). Landing page footer headings use the correct level.
 
 ## [0.4.0] - 2026-11-03
 

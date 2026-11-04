@@ -16,8 +16,8 @@ from unittest.mock import patch
 from mcap.writer import Writer, CompressionType
 from mcap.data_stream import RecordBuilder
 from tracecheck.contract import loads, validate, ContractError
-from tracecheck.engine import analyze_bytes, analyze_file
-from tracecheck.reader import Limits, MiB
+from tracecheck.engine import analyze_bytes
+from tracecheck.reader import Limits
 from tracecheck.samples import CONTRACT, write_sample, generate
 from tracecheck.report import render
 from tracecheck.server import LocalServer
@@ -206,6 +206,16 @@ class CLITests(unittest.TestCase):
             p=Path(td)/'bad.json'; p.write_text('{')
             r=subprocess.run([sys.executable,'-m','tracecheck','validate-contract',str(p)],capture_output=True)
             self.assertEqual(r.returncode,2)
+    def test_worker_accepts_a_file_name_starting_with_a_dash(self):
+        # The local server passes the uploaded name as one --name=... argument, so "-x.mcap" is not read as an option.
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td); generate(root/'ex')
+            cmd=[sys.executable,'-m','tracecheck','_worker',str(root/'ex/clean.mcap'),str(root/'ex/demo-contract.json'),'--name=-x.mcap']
+            r=subprocess.run(cmd,capture_output=True,text=True,encoding='utf-8'); self.assertEqual(r.returncode,0,r.stderr)
+            self.assertIn('-x.mcap',r.stdout)
+    def test_help_hides_the_internal_worker_command(self):
+        r=subprocess.run([sys.executable,'-m','tracecheck','--help'],capture_output=True,text=True)
+        self.assertEqual(r.returncode,0); self.assertNotIn('_worker',r.stdout); self.assertIn('validate-contract',r.stdout)
     def test_cli_flags_fast_ignore_crc_fail_on(self):
         from tracecheck.__main__ import main
         with tempfile.TemporaryDirectory() as td:

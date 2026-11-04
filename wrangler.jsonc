@@ -41,11 +41,8 @@
 	"workers_dev": false,
 	"preview_urls": false,
 	// Invocation logs would record request metadata (including client IPs) for every feedback request,
-	// so they are disabled. The Worker itself never logs.
+	// and Workers Logs would also record uncaught exceptions, so observability is off entirely. The Worker itself never logs.
 	"observability": {
-		"enabled": true,
-		"logs": {
-			"invocation_logs": false
-		}
+		"enabled": false
 	}
 }

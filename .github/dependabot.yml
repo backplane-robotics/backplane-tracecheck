@@ -1,0 +1,18 @@
+# Weekly update pull requests. Nothing merges or deploys automatically: each PR runs CI and waits for review.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    groups:
+      web-dev-tools:
+        dependency-type: development
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly

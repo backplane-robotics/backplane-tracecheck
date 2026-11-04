@@ -117,6 +117,8 @@ def load(path: str | Path) -> dict:
         m = json.loads(p.read_text(encoding="utf-8-sig"))
     except (UnicodeDecodeError, json.JSONDecodeError) as e:
         raise ManifestError(f"manifest is not JSON ({e})") from None
+    except RecursionError:
+        raise ManifestError("manifest is not JSON (nested too deeply)") from None
     _need(isinstance(m, dict), "top level is not an object")
     _need(m.get("manifest_version") == MANIFEST_VERSION, f"manifest_version must be {MANIFEST_VERSION}")
     rec = m.get("recording")

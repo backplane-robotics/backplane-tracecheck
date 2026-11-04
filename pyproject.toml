@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6", "build>=1.2"]
+dev = ["pytest>=8", "ruff==0.17.0", "build>=1.2"]
 
 [project.scripts]
 tracecheck = "tracecheck.__main__:main"
@@ -58,3 +58,8 @@ testpaths = ["tests"]
 line-length = 120
 target-version = "py311"
 extend-exclude = ["archive", "web"]
+
+# The same rules locally and in CI (`ruff check .`).
+[tool.ruff.lint]
+select = ["E", "F", "W", "B"]
+ignore = ["E501", "E701", "E702", "E731", "E741"]
