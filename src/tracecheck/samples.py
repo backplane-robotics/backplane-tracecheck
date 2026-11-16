@@ -111,6 +111,64 @@ def write_indexless_rosbag2_sample(path):
         w.finish()
 
 
+def write_indexless_attachment_sample(path, bad_crc=False):
+    """No indexes, plus an attachment and a metadata record; with ``bad_crc``, one chunk's stored CRC is wrong.
+
+    Readers that rely on indexes can miss unindexed attachments and metadata, and some skip CRC checks when they fall
+    back to reading records directly (MCAP PR #1932, Python SeekingReader). Tracecheck reads every record: it must
+    find the metadata and count the attachment, and in fast mode fall back to a full scan that still checks every
+    chunk CRC. Uncompressed chunks, one message each; for ``bad_crc`` the third chunk's CRC is changed after writing.
+    """
+    with Path(path).open('wb') as f:
+        w = Writer(f, chunk_size=1, compression=CompressionType.NONE, index_types=IndexType.NONE, enable_crcs=True)
+        w.start(profile='', library='backplane-tracecheck synthetic generator')
+        sid = w.register_schema('DemoPosition', 'jsonschema', b'{"type":"object"}')
+        cid = w.register_channel('/demo/position', 'json', sid)
+        w.add_metadata('session', {'software_version': 'demo-1'})
+        for i in range(11):
+            t = i * 100000000
+            w.add_message(cid, t, b'{"x":1,"synthetic":true}', t, sequence=i)
+        w.add_attachment(create_time=0, log_time=500000000, name='calibration.yaml', media_type='application/yaml',
+                         data=b'synthetic: true\n')
+        w.finish()
+    if not bad_crc:
+        return
+    data = bytearray(Path(path).read_bytes())
+    pos, chunks = 8, 0
+    while pos + 9 <= len(data):
+        op, length = data[pos], struct.unpack_from('<Q', data, pos + 1)[0]
+        if op == 0x06:  # Chunk: start, end, uncompressed size (u64 each), then the uncompressed CRC (u32)
+            chunks += 1
+            if chunks == 3:
+                crc_at = pos + 9 + 24
+                struct.pack_into('<I', data, crc_at, struct.unpack_from('<I', data, crc_at)[0] ^ 0xFFFFFFFF)
+                break
+        if op == 0x02:  # Footer
+            break
+        pos += 9 + length
+    Path(path).write_bytes(bytes(data))
+
+
+def write_shared_boundary_sample(path):
+    """Two topics with identical timestamps, one message per chunk, so neighbouring chunks share a boundary time.
+
+    Chunk N ends at time t (``/demo/position``) and chunk N+1 starts at the same t (``/demo/velocity``). That is
+    contact, not overlap or time going backwards, and must not be reported as a problem (compare MCAP PR #1931).
+    """
+    with Path(path).open('wb') as f:
+        w = Writer(f, chunk_size=1, compression=CompressionType.NONE, enable_crcs=True, enable_data_crcs=True)
+        w.start(profile='', library='backplane-tracecheck synthetic generator')
+        sid = w.register_schema('DemoPosition', 'jsonschema', b'{"type":"object"}')
+        pos = w.register_channel('/demo/position', 'json', sid)
+        vel = w.register_channel('/demo/velocity', 'json', sid)
+        w.add_metadata('session', {'software_version': 'demo-1'})
+        for i in range(11):
+            t = i * 100000000
+            w.add_message(pos, t, b'{"x":1,"synthetic":true}', t, sequence=i)
+            w.add_message(vel, t, b'{"v":0,"synthetic":true}', t, sequence=i)
+        w.finish()
+
+
 def _cdr_event(stamp_ns, *fields):
     """Little-endian plain CDR for a dynrec event: Time stamp, then uint8 (int) and string (str) fields."""
     out = bytearray(b'\x00\x01\x00\x00')
@@ -266,6 +324,12 @@ def generate(dest):
     write_bad_index_sample(dest/'bad-index.mcap')
     # No indexes at all, with embedded rosbag2 metadata: must read cleanly.
     write_indexless_rosbag2_sample(dest/'indexless-rosbag2.mcap')
+    # No indexes, with an attachment and metadata: every record must still be found (fast mode falls back to full).
+    write_indexless_attachment_sample(dest/'indexless-attachment.mcap')
+    # The same with one wrong chunk CRC: the fallback full scan must still check CRCs and stop with no conclusions.
+    write_indexless_attachment_sample(dest/'indexless-badcrc.mcap', bad_crc=True)
+    # Neighbouring chunks that share a boundary timestamp: contact, not overlap; must pass.
+    write_shared_boundary_sample(dest/'shared-boundary.mcap')
     write_fleet_sample(dest/'fleet-zstd.mcap', seconds=20)
     # Cut part-way through the message data, like a recorder that stopped mid-write: no summary, no footer.
     fleet = (dest/'fleet-zstd.mcap').read_bytes()

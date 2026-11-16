@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format follows
 - `tracecheck --help` no longer lists the internal `_worker` command.
 
 ### Security and maintenance
+- Regression tests and examples for two reader problems reported upstream, which Tracecheck is not affected by:
+  `indexless-attachment.mcap` / `indexless-badcrc.mcap` (no indexes, an attachment and metadata, and one wrong chunk
+  CRC; compare MCAP PR #1932) and `shared-boundary.mcap` (neighbouring chunks sharing a boundary timestamp must pass;
+  compare MCAP PR #1931). Checked in full and fast mode, in Python and in the browser engine.
 - Feedback Worker: answers `503` JSON if the rate limiter fails instead of throwing; Workers observability is turned
   off entirely so no request or exception logs are collected. `docs/FEEDBACK.md` updated (spam control is best-effort).
 - `.gitignore` covers `.env`, `.dev.vars`, key files and editor workspace files.

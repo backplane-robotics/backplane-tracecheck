@@ -59,6 +59,51 @@ def test_indexless_file_with_rosbag2_metadata_reads_cleanly():
     assert c04["status"] == "pass"  # required metadata found by reading the records, with no index
 
 
+# MCAP PR #1932: the Python SeekingReader can skip unindexed attachments and metadata, and ignore CRC options, when
+# it falls back from missing indexes. Tracecheck has its own reader; these lock in that it is not affected.
+def test_indexless_attachment_and_metadata_are_found_in_both_modes():
+    for fast in (False, True):
+        r = analyze_file(EX / "indexless-attachment.mcap", DEMO, fast=fast)
+        assert r["overall"] == "pass" and r["scan_complete"] is True
+        assert r["scan_mode"] == "full"  # fast mode cannot trust a summary with no metadata index
+        if fast:
+            assert r["fast_mode_fallback"] == "summary does not index every metadata record"
+        assert r["scan_stats"]["attachments_skipped"] == 1  # the unindexed attachment was read and counted
+        assert next(c for c in r["checks"] if c["id"] == "C04")["status"] == "pass"  # metadata found with no index
+        f = index_finding(r)
+        assert (f["summary_index"], f["summary_statistics"]) == ("absent", "agrees")
+
+
+def test_indexless_bad_chunk_crc_is_still_checked_in_both_modes():
+    for fast in (False, True):
+        r = analyze_file(EX / "indexless-badcrc.mcap", DEMO, fast=fast)
+        assert r["overall"] == "fail" and r["scan_complete"] is False
+        assert c01(r)["status"] == "fail"
+        assert "chunk CRC mismatch" in c01(r)["findings"][0]["detail"]
+        # A corrupted recording gets no completeness or timing conclusions.
+        assert all(c["status"] == "skipped" for c in r["checks"] if c["id"] != "C01")
+
+
+# MCAP PR #1931: neighbouring chunks that share a boundary timestamp were reported as overlapping. Equal timestamps
+# are contact, not time going backwards; Tracecheck must not warn.
+def test_chunks_sharing_a_boundary_timestamp_pass():
+    import struct
+
+    data = (EX / "shared-boundary.mcap").read_bytes()
+    pos, ranges = 8, []
+    while data[pos] != 0x02:  # walk records up to the Footer, collecting chunk start/end times
+        length = struct.unpack_from("<Q", data, pos + 1)[0]
+        if data[pos] == 0x06:
+            ranges.append(struct.unpack_from("<QQ", data, pos + 9))
+        pos += 9 + length
+    assert any(ranges[i][1] == ranges[i + 1][0] for i in range(len(ranges) - 1))  # fixture has shared boundaries
+    r = analyze_file(EX / "shared-boundary.mcap", DEMO)
+    assert r["overall"] == "pass"
+    c08 = next(c for c in r["checks"] if c["id"] == "C08")
+    assert c08["status"] == "pass"
+    assert all(f.get("evidence_count", 0) == 0 for f in c08["findings"])
+
+
 def _observed(**kw):
     base = {"message_count": 3, "schema_count": 1, "channel_count": 1, "attachment_count": 0, "metadata_count": 0,
             "chunk_count": 1, "message_start_time": 10, "message_end_time": 30, "channel_message_counts": {1: 3}}
