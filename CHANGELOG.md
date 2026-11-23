@@ -28,6 +28,9 @@ All notable changes to this project are documented here. The format follows
   scripts; strict CSP. These cover every page on the domain, including the planned `/pro/` sales page.
 
 ### Website
+- Tracker: added SYNCROBOTIC (“Jeff” and “Adventure” quadruped platforms) and BLUEPATH ROBOTICS (O1000 PLATFORM AMR,
+  OM1500 TUNNEL AMR), both from FCC DA 26-1243 (Nov 18, 2026). All 17 entries rechecked against that notice's
+  appendix (Nov 23). Conditions quoted as that notice words them ("as applicable" vetting; no "superseded" clause).
 - Tracker: added ABB Robotics (AMMR G0540, AMMR G1240, P204V) and Pantograph Industries (Pandroid Robot Hardware),
   both from FCC DA 26-1203 (Nov 6, 2026). All 15 entries rechecked against that notice's appendix (Nov 9).
 - New article: plain-language summary of the FCC test-lab location rules (FCC 26-73) for robotics makers, at

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "last_updated": "2026-11-09",
+  "last_updated": "2026-11-23",
   "covered_list_url": "https://www.fcc.gov/supplychain/coveredlist",
   "designation": {
     "notice_number": "DA 26-786",
@@ -21,7 +21,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-957A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-11-09"
+      "last_checked": "2026-11-23"
     },
     {
       "id": "anscer-ar-amr",
@@ -35,7 +35,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-996A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-11-09"
+      "last_checked": "2026-11-23"
     },
     {
       "id": "matic-floor-cleaner",
@@ -49,7 +49,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1063A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-11-09"
+      "last_checked": "2026-11-23"
     },
     {
       "id": "volley-agv-amr",
@@ -63,7 +63,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1114A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-11-09"
+      "last_checked": "2026-11-23"
     },
     {
       "id": "vulcan-sourccey",
@@ -77,7 +77,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1130A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-11-09"
+      "last_checked": "2026-11-23"
     },
     {
       "id": "haystack-violet-ai",
@@ -91,7 +91,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1154A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-11-09"
+      "last_checked": "2026-11-23"
     },
     {
       "id": "t-robotics-agv-class",
@@ -105,7 +105,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1154A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-11-09"
+      "last_checked": "2026-11-23"
     },
     {
       "id": "arapl-maia2000-atlas-ac2000",
@@ -119,7 +119,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1181A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-11-09"
+      "last_checked": "2026-11-23"
     },
     {
       "id": "ati-motors-sherpa-flexfork",
@@ -133,7 +133,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1181A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-11-09"
+      "last_checked": "2026-11-23"
     },
     {
       "id": "lightberry-lumi",
@@ -147,7 +147,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1181A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-11-09"
+      "last_checked": "2026-11-23"
     },
     {
       "id": "sunscout-platforms-solar-shelter",
@@ -161,7 +161,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1181A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-11-09"
+      "last_checked": "2026-11-23"
     },
     {
       "id": "swap-robotics-v7",
@@ -175,7 +175,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1181A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-11-09"
+      "last_checked": "2026-11-23"
     },
     {
       "id": "omron-ld-150-ld-300",
@@ -189,7 +189,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1181A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-11-09"
+      "last_checked": "2026-11-23"
     },
     {
       "id": "abb-ammr-p204v",
@@ -203,7 +203,7 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1203A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-11-09"
+      "last_checked": "2026-11-23"
     },
     {
       "id": "pantograph-pandroid",
@@ -217,7 +217,35 @@
       "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1203A1.pdf",
       "secondary_sources": [],
       "verified_against_primary": true,
-      "last_checked": "2026-11-09"
+      "last_checked": "2026-11-23"
+    },
+    {
+      "id": "syncrobotic-jeff-adventure",
+      "manufacturer": "SYNCROBOTIC CO., LTD.",
+      "equipment": ["“Jeff” quadruped robotic platform", "“Adventure” quadruped robotic platform"],
+      "category": "Quadruped robot",
+      "notice_number": "DA 26-1243",
+      "date_announced": "2026-11-18",
+      "status": "Conditional approval",
+      "conditions_summary": "The notice names the “Jeff” and “Adventure” quadruped robotic platforms. Exemption is subject to continuing “compliance with the onshoring plan[s] outlined in [their] conditional approval application[s]” and, as applicable, “pursuant to updated vetting of [their] products.” No termination date; per the notice, approvals without one remain effective indefinitely while the company follows its onshoring plan and updated product vetting, and failure to comply or a misrepresentation could end the approval and return the equipment to the Covered List.",
+      "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1243A1.pdf",
+      "secondary_sources": [],
+      "verified_against_primary": true,
+      "last_checked": "2026-11-23"
+    },
+    {
+      "id": "bluepath-o1000-om1500",
+      "manufacturer": "BLUEPATH ROBOTICS, INC.",
+      "equipment": ["O1000 PLATFORM advanced mobile robot (AMR)", "OM1500 TUNNEL AMR"],
+      "category": "Autonomous mobile robot (AMR)",
+      "notice_number": "DA 26-1243",
+      "date_announced": "2026-11-18",
+      "status": "Conditional approval",
+      "conditions_summary": "The notice names the O1000 PLATFORM advanced mobile robot (AMR) and the OM1500 TUNNEL AMR. Exemption is subject to continuing “compliance with the onshoring plan[s] outlined in [their] conditional approval application[s]” and, as applicable, “pursuant to updated vetting of [their] products.” No termination date; per the notice, approvals without one remain effective indefinitely while the company follows its onshoring plan and updated product vetting, and failure to comply or a misrepresentation could end the approval and return the equipment to the Covered List.",
+      "primary_source_url": "https://docs.fcc.gov/public/attachments/DA-26-1243A1.pdf",
+      "secondary_sources": [],
+      "verified_against_primary": true,
+      "last_checked": "2026-11-23"
     }
   ]
 }
